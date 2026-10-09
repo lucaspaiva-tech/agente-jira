@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: erros e variáveis sem uso. I: ordem dos imports. B: armadilhas comuns. UP: sintaxe antiga.
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff.lint.per-file-ignores]
+# O gerador monta SQL em texto e os testes têm tabelas de casos: linha longa é legítima aqui.
+"scripts/gerar_seed.py" = ["E501"]
+"tests/*" = ["E501"]

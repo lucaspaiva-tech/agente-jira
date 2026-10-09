@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.venv/**)",
+      "Read(./__pycache__/**)",
+      "Read(./.git/**)",
+      "Read(./dist/**)",
+      "Read(./.pytest_cache/**)",
+      "Read(./.ruff_cache/**)",
+      "Read(./.streamlit/secrets.toml)",
+      "Read(**/.streamlit/secrets.toml)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(./.envrc)",
+      "Read(./.envrc.*)",
+      "Read(**/.envrc)",
+      "Read(**/.envrc.*)",
+      "Read(./.secrets)",
+      "Read(./.secrets.*)",
+      "Read(**/secrets.json)",
+      "Read(**/secrets.yaml)",
+      "Read(**/secrets.yml)",
+      "Read(**/credentials.json)",
+      "Read(**/credentials.yaml)",
+      "Read(**/credentials.yml)",
+      "Read(**/service-account*.json)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Read(./.ssh/**)",
+      "Read(./.aws/**)",
+      "Read(./.gnupg/**)",
+      "Read(./.netrc)",
+      "Read(./supabase/seed/seed.sql)",
+      "Bash(rm -rf:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge --no-ff:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/post-edit-markdown-validate.sh" },
+          { "type": "command", "command": ".claude/hooks/post-edit-secret-scan.sh" },
+          { "type": "command", "command": ".claude/hooks/post-edit-python-lint.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/stop-verify.sh" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,249 @@
+"""Regras de negócio que SÓ a página usa. Funções puras: sem Streamlit e sem banco.
+
+O que o n8n e a página compartilham mora no banco, num lugar só: decisão automática da IA
+(`status_ia_regras`), transições de estado e carimbos de tempo, ligação ao parceiro, SLA de
+48h, espera da multa. Aqui ficam só as regras de apresentação e de permissão de ação.
+"""
+
+import re
+from datetime import UTC, datetime
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
+
+FUSO = ZoneInfo("America/Sao_Paulo")
+TOLERANCIA_MULTA = 0.01  # diferença aceitável (em reais) entre a multa e o valor repassado
+
+ASSUNTO_EMAIL_PARCEIRO = "Novas solicitações de reembolso disponíveis"
+MENSAGEM_CONTATO_PARCEIRO = (
+    "Temos novas solicitações de reembolso disponíveis na planilha.\n\n"
+    "É simples: quando chegar uma linha nova na planilha, só precisa preencher 2 colunas: "
+    '"Podemos Reembolsar?" (Sim ou Não) e o motivo da resposta. '
+    "Assim que preencher, já está registrado do nosso lado, sem precisar mandar mensagem "
+    "confirmando.\n\n"
+    "Qualquer dúvida, pode chamar!"
+)
+
+TEXTO_MULTA = {
+    "aguardando": ("⏳ Aguardando registro no banco", "aviso"),
+    "nao_encontrada": ("⚠️ Multa não encontrada (prazo esgotado)", "aviso"),
+    "custo_bx": ("Custo assumido por BX", "neutro"),
+    "erro": ("Erro na consulta", "erro"),
+}
+
+
+# -----------------------------------------------------------------------------
+# Aprovação e reembolso
+# -----------------------------------------------------------------------------
+def classificar_aprovacao(valor) -> str:
+    """'aprovado', 'reprovado' ou 'indefinido'.
+
+    A resposta do parceiro é texto livre. Conta como aprovado "Sim" ou qualquer texto que
+    contenha "aprovado" (ex.: "Aprovado por falta de retorno em 48 horas"). Reprovado só
+    "Não"/"Nao". Qualquer outra coisa (vazio, texto estranho) é indefinido.
+    """
+    v = str(valor or "").strip().lower()
+    if v == "sim" or "aprovado" in v:
+        return "aprovado"
+    if v in ("não", "nao"):
+        return "reprovado"
+    return "indefinido"
+
+
+def situacao_reembolso(aprovado, reembolso_confirmado_em) -> str:
+    """'indefinido', 'nao_cabe', 'aguardando' ou 'confirmado'. Derivado, nunca gravado."""
+    classe = classificar_aprovacao(aprovado)
+    if classe == "reprovado":
+        return "nao_cabe"
+    if classe == "indefinido":
+        return "indefinido"
+    return "confirmado" if reembolso_confirmado_em else "aguardando"
+
+
+# -----------------------------------------------------------------------------
+# O que o usuário pode fazer em cada ticket
+# -----------------------------------------------------------------------------
+def pode_enviar_ao_parceiro(ticket) -> bool:
+    return (
+        ticket.get("estado") == "pendente"
+        and ticket.get("acionar_operador") is True
+        and ticket.get("parceiro_id") is not None
+    )
+
+
+def pode_reverter_envio(ticket) -> bool:
+    return ticket.get("estado") == "enviado_parceiro"
+
+
+def pode_registrar_decisao(ticket) -> bool:
+    return ticket.get("estado") in ("pendente", "enviado_parceiro")
+
+
+def pode_confirmar_reembolso(ticket) -> bool:
+    return (
+        ticket.get("estado") == "decidido"
+        and situacao_reembolso(ticket.get("aprovado"), ticket.get("reembolso_confirmado_em"))
+        == "aguardando"
+    )
+
+
+def pode_corrigir_autorizacao(ticket) -> bool:
+    """Corrigir se houve autorização de liderança (TL ou supervisão).
+
+    Só nos status que admitem custo BX (v_fila.pede_autorizacao, hoje só Alinhado) e só
+    antes de confirmar o reembolso: depois disso o banco não deixa mais mudar.
+    """
+    return (
+        ticket.get("pede_autorizacao") is True
+        and not ticket.get("reembolso_confirmado_em")
+        and ticket.get("estado") in ("pendente", "enviado_parceiro", "decidido")
+    )
+
+
+def pode_resolver(ticket) -> bool:
+    return ticket.get("estado") == "decidido"
+
+
+def pode_reabrir(ticket) -> bool:
+    return ticket.get("estado") == "resolvido"
+
+
+ACOES = {
+    "enviar_ao_parceiro": pode_enviar_ao_parceiro,
+    "reverter_envio": pode_reverter_envio,
+    "registrar_decisao": pode_registrar_decisao,
+    "corrigir_autorizacao": pode_corrigir_autorizacao,
+    "confirmar_reembolso": pode_confirmar_reembolso,
+    "resolver": pode_resolver,
+    "reabrir": pode_reabrir,
+}
+
+
+def acoes_disponiveis(ticket) -> list[str]:
+    """Nomes das ações que a tela deve oferecer pra este ticket."""
+    return [nome for nome, regra in ACOES.items() if regra(ticket)]
+
+
+# -----------------------------------------------------------------------------
+# Multa
+# -----------------------------------------------------------------------------
+def multa_confere(multa_valor, valor_repassado, tolerancia=TOLERANCIA_MULTA) -> bool:
+    if multa_valor is None or valor_repassado is None:
+        return False
+    return abs(float(multa_valor) - float(valor_repassado)) < tolerancia
+
+
+def descricao_multa(multa_status, multa_valor, valor_repassado) -> tuple[str, str]:
+    """(texto, cor) pra mostrar a multa. Cor: 'sucesso', 'erro', 'aviso' ou 'neutro'."""
+    if multa_status == "encontrada":
+        cor = "sucesso" if multa_confere(multa_valor, valor_repassado) else "erro"
+        return formatar_real(multa_valor), cor
+    return TEXTO_MULTA.get(multa_status, ("", "neutro"))
+
+
+TEXTO_DESTINO_REEMBOLSO = {
+    "custo_bx": "Custo BX (autorizado por liderança)",
+    "multa_parceiro": "Multa na carteira do parceiro",
+}
+
+
+def descricao_destino_reembolso(destino) -> str:
+    """Texto pra v_fila.destino_reembolso. A regra mora no banco; aqui só a frase."""
+    return TEXTO_DESTINO_REEMBOLSO.get(destino, "")
+
+
+COR_SLA = {
+    "no_prazo": "sucesso",
+    "respondido": "neutro",
+    "estourado": "erro",
+    "nao_enviado": "neutro",
+}
+
+
+def cor_sla(situacao_sla) -> str:
+    return COR_SLA.get(situacao_sla, "neutro")
+
+
+# -----------------------------------------------------------------------------
+# Formatação
+# -----------------------------------------------------------------------------
+def formatar_real(valor) -> str:
+    """1234.5 vira 'R$ 1.234,50'. Sem valor vira '—'."""
+    if valor is None:
+        return "—"
+    inteiro = f"{abs(float(valor)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{'-' if float(valor) < 0 else ''}R$ {inteiro}"
+
+
+def _como_datetime(valor):
+    if isinstance(valor, datetime):
+        return valor
+    if isinstance(valor, str) and valor.strip():
+        return datetime.fromisoformat(valor.strip().replace("Z", "+00:00"))
+    return None
+
+
+def formatar_data_hora(valor) -> str:
+    """Data e hora no fuso de São Paulo: 'dd/mm/aaaa hh:mm'. Sem valor vira '—'."""
+    momento = _como_datetime(valor)
+    if momento is None:
+        return "—"
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    return momento.astimezone(FUSO).strftime("%d/%m/%Y %H:%M")
+
+
+# -----------------------------------------------------------------------------
+# Contato com o parceiro
+# -----------------------------------------------------------------------------
+def link_planilha(planilha_id) -> str:
+    return f"https://docs.google.com/spreadsheets/d/{planilha_id}/edit"
+
+
+def limpar_telefone(bruto) -> str | None:
+    """Só dígitos, com o 55 do Brasil na frente quando faltar. None se não há número."""
+    digitos = re.sub(r"\D", "", str(bruto or ""))
+    if not digitos:
+        return None
+    if not digitos.startswith("55") and len(digitos) in (10, 11):
+        digitos = "55" + digitos
+    return digitos
+
+
+def mensagem_contato(planilha_id) -> str:
+    return f"{MENSAGEM_CONTATO_PARCEIRO}\n\n📊 Planilha: {link_planilha(planilha_id)}"
+
+
+def _codificar(texto: str) -> str:
+    # Mesmo conjunto de caracteres preservados do encodeURIComponent do navegador.
+    return quote(texto, safe="!~*'()")
+
+
+def link_contato(whatsapp, email, planilha_id) -> dict:
+    """Como avisar o parceiro: {'tipo', 'rotulo', 'url'}. WhatsApp tem prioridade sobre e-mail.
+
+    'GRUPO' no WhatsApp significa contato por grupo: o link abre o WhatsApp com a mensagem
+    pronta e a pessoa escolhe o grupo (não existe link que abra um grupo específico).
+    """
+    mensagem = _codificar(mensagem_contato(planilha_id))
+    eh_grupo = str(whatsapp or "").strip().lower() == "grupo"
+    telefone = None if eh_grupo else limpar_telefone(whatsapp)
+
+    if eh_grupo:
+        return {"tipo": "whatsapp_grupo", "rotulo": "📱 Abrir WhatsApp (escolher grupo)",
+                "url": f"https://wa.me/?text={mensagem}"}
+    if telefone:
+        return {"tipo": "whatsapp", "rotulo": "📱 Abrir WhatsApp",
+                "url": f"https://wa.me/{telefone}?text={mensagem}"}
+    if email and str(email).strip():
+        para = _codificar(str(email).strip())
+        assunto = _codificar(ASSUNTO_EMAIL_PARCEIRO)
+        return {"tipo": "email", "rotulo": "✉️ Enviar E-mail",
+                "url": f"https://mail.google.com/mail/?view=cm&fs=1&to={para}&su={assunto}&body={mensagem}"}
+    return {"tipo": "sem_contato", "rotulo": "Sem contato cadastrado", "url": None}
+
+
+def empresas_sem_parceiro(empresas_dos_tickets, nomes_cadastrados) -> list[str]:
+    """Nomes de empresa que aparecem em tickets mas não estão em nenhum parceiro."""
+    cadastrados = {n.strip() for n in nomes_cadastrados}
+    pendentes = {e.strip() for e in empresas_dos_tickets if e and e.strip()}
+    return sorted(pendentes - cadastrados)

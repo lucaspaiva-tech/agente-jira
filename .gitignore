@@ -1,0 +1,21 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.pyc
+
+# Segredos: nunca versionar
+.streamlit/secrets.toml
+
+# Dados com nome de passageiro (LGPD): nunca versionar
+supabase/seed/seed.sql
+*.xlsx
+*.csv
+# A planilha de medição não tem dado de passageiro: pode versionar.
+!entrega/medicao.xlsx
+
+# Pacote gerado para o Hub
+dist/
+
+# Caches de ferramenta
+.pytest_cache/
+.ruff_cache/

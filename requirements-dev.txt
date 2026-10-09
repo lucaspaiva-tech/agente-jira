@@ -1,0 +1,7 @@
+# Só pra desenvolver e testar. NÃO vai no ZIP do Hub (o Hub usa só o requirements.txt).
+-r requirements.txt
+pytest>=8
+ruff>=0.6
+# usados só pelo scripts/gerar_seed.py
+pandas>=2
+openpyxl>=3

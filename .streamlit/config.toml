@@ -1,0 +1,13 @@
+# Tema do app: paleta Buser (ver DESIGN.md). Este arquivo NÃO tem segredo e vai no ZIP do Hub.
+# O Streamlit só aceita estas cores no tema. As cores de sucesso, erro e aviso são as dele.
+
+[theme]
+primaryColor = "#e6006a"          # primaria-ativa: botão com texto branco passa AA (o #f11075 não passa)
+backgroundColor = "#fafafa"       # tela
+secondaryBackgroundColor = "#ffffff"  # cartao
+textColor = "#454545"             # tinta: texto de leitura, não é preto
+font = "sans serif"
+
+[browser]
+# O app é interno: sem telemetria.
+gatherUsageStats = false

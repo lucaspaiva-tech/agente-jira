@@ -240,3 +240,68 @@ def test_contar_por_estado_segue_a_ordem_do_fluxo_e_mostra_zero():
 def test_estados_padrao_da_fila_escondem_so_resolvido():
     assert "resolvido" not in d.ESTADOS_PADRAO_FILA
     assert set(d.ESTADOS_PADRAO_FILA) | {"resolvido"} == set(d.ESTADOS)
+
+
+# ---------------------------------------------------------------- detalhe: link do Jira e linha do tempo
+def test_link_jira():
+    assert d.link_jira("https://buser.atlassian.net", "MKTPL-1") == "https://buser.atlassian.net/browse/MKTPL-1"
+    # barra no fim da base não duplica
+    assert d.link_jira("https://buser.atlassian.net/", "MKTPL-1") == "https://buser.atlassian.net/browse/MKTPL-1"
+
+
+def test_link_jira_sem_base_ou_sem_chave_nao_monta_link():
+    assert d.link_jira(None, "MKTPL-1") is None
+    assert d.link_jira("  ", "MKTPL-1") is None
+    assert d.link_jira("https://buser.atlassian.net", None) is None
+
+
+def test_evento_de_criacao():
+    assert d.descrever_evento({"campo": "criado", "de": None, "para": "pendente"}) == "Ticket criado em pendente"
+
+
+def test_evento_de_mudanca_usa_o_nome_do_campo_em_portugues():
+    evento = {"campo": "estado", "de": "pendente", "para": "enviando"}
+    assert d.descrever_evento(evento) == "Estado: pendente → enviando"
+
+
+def test_evento_com_lado_vazio_mostra_traco():
+    assert d.descrever_evento({"campo": "obs", "de": None, "para": "conferido"}) == "OBS: — → conferido"
+
+
+def test_evento_booleano_vira_sim_e_nao():
+    evento = {"campo": "autorizado_lideranca", "de": "false", "para": "true"}
+    assert d.descrever_evento(evento) == "Autorização de liderança: não → sim"
+
+
+def test_evento_de_data_sai_no_fuso_de_sao_paulo():
+    evento = {"campo": "reembolso_confirmado_em", "de": None, "para": "2026-10-10T13:00:00+00:00"}
+    assert d.descrever_evento(evento) == "Reembolso confirmado em: — → 10/10/2026 10:00"
+
+
+def test_evento_de_campo_desconhecido_usa_o_nome_cru():
+    assert d.descrever_evento({"campo": "novo_campo", "de": "a", "para": "b"}) == "novo_campo: a → b"
+
+
+# ---------------------------------------------------------------- detalhe: viagem e reembolso
+def test_formatar_viagem_nao_muda_o_dia_por_fuso():
+    # data_viagem é só data: não pode virar meia-noite UTC e cair no dia anterior em SP.
+    assert d.formatar_viagem("2026-10-01", "19:00:00") == "01/10/2026 às 19:00"
+
+
+def test_formatar_viagem_sem_hora_ou_sem_data():
+    assert d.formatar_viagem("2026-10-01", None) == "01/10/2026"
+    assert d.formatar_viagem(None, "19:00:00") == "—"
+    assert d.formatar_viagem(None, None) == "—"
+
+
+@pytest.mark.parametrize("situacao", ["indefinido", "nao_cabe", "aguardando", "confirmado"])
+def test_toda_situacao_de_reembolso_tem_texto(situacao):
+    assert d.TEXTO_SITUACAO_REEMBOLSO[situacao].strip()
+
+
+def test_texto_do_reembolso_confirmado():
+    assert d.TEXTO_SITUACAO_REEMBOLSO[d.situacao_reembolso("Sim", "2026-10-04T23:10:01+00:00")] == "Reembolso confirmado"
+
+
+def test_evento_de_nova_decisao_nao_mostra_o_id_interno():
+    assert d.descrever_evento({"campo": "decisao_id", "de": None, "para": "311"}) == "Nova decisão da IA"

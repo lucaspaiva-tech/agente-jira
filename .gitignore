@@ -19,3 +19,4 @@ dist/
 # Caches de ferramenta
 .pytest_cache/
 .ruff_cache/
+entrega/medicao.xlsx

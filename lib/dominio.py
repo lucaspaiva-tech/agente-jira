@@ -6,7 +6,7 @@ O que o n8n e a página compartilham mora no banco, num lugar só: decisão auto
 """
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -88,6 +88,14 @@ def contar_por_estado(tickets) -> dict[str, int]:
     for t in tickets:
         contagem[t.get("estado")] = contagem.get(t.get("estado"), 0) + 1
     return contagem
+
+
+TEXTO_SITUACAO_REEMBOLSO = {
+    "indefinido": "Sem resposta do parceiro ainda",
+    "nao_cabe": "Não cabe reembolso (parceiro respondeu Não)",
+    "aguardando": "Aprovado, aguardando confirmar o reembolso",
+    "confirmado": "Reembolso confirmado",
+}
 
 
 # -----------------------------------------------------------------------------
@@ -221,6 +229,61 @@ def formatar_data_hora(valor) -> str:
     if momento.tzinfo is None:
         momento = momento.replace(tzinfo=UTC)
     return momento.astimezone(FUSO).strftime("%d/%m/%Y %H:%M")
+
+
+def formatar_viagem(data, hora) -> str:
+    """'01/10/2026 às 19:00'. A data da viagem é só data: não passa por fuso."""
+    if not data:
+        return "—"
+    texto = date.fromisoformat(str(data)[:10]).strftime("%d/%m/%Y")
+    return f"{texto} às {str(hora)[:5]}" if hora else texto
+
+
+def link_jira(base, chave) -> str | None:
+    """Link do ticket no Jira. Sem JIRA_BASE_URL ou sem chave, não há link."""
+    if not (base or "").strip() or not chave:
+        return None
+    return f"{base.strip().rstrip('/')}/browse/{chave}"
+
+
+# -----------------------------------------------------------------------------
+# Linha do tempo (tabela eventos)
+# -----------------------------------------------------------------------------
+NOME_CAMPO_EVENTO = {
+    "estado": "Estado",
+    "aprovado": "Resposta do parceiro",
+    "motivo_parceiro": "Motivo do parceiro",
+    "obs": "OBS",
+    "acionar_operador": "Acionar operador",
+    "autorizado_lideranca": "Autorização de liderança",
+    "reembolso_confirmado_em": "Reembolso confirmado em",
+    "multa_status": "Multa",
+    "multa_valor": "Valor da multa",
+    "parceiro_id": "Parceiro",
+    "decisao_id": "Decisão da IA",
+}
+
+
+def _valor_do_evento(campo, valor) -> str:
+    # O trigger grava tudo como texto: booleano chega como 'true'/'false'.
+    if valor is None or valor == "":
+        return "—"
+    if valor in ("true", "false"):
+        return "sim" if valor == "true" else "não"
+    if campo == "reembolso_confirmado_em":
+        return formatar_data_hora(valor)
+    return valor
+
+
+def descrever_evento(evento) -> str:
+    """'Estado: pendente → enviando'. A criação vira 'Ticket criado em <estado>'."""
+    campo = evento.get("campo")
+    if campo == "criado":
+        return f"Ticket criado em {_valor_do_evento(campo, evento.get('para'))}"
+    if campo == "decisao_id":
+        return "Nova decisão da IA"  # o id interno não diz nada a quem lê
+    nome = NOME_CAMPO_EVENTO.get(campo, campo)
+    return f"{nome}: {_valor_do_evento(campo, evento.get('de'))} → {_valor_do_evento(campo, evento.get('para'))}"
 
 
 # -----------------------------------------------------------------------------

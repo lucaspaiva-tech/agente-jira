@@ -42,6 +42,41 @@ def listar_fila() -> list[dict]:
             return tickets
 
 
+def _primeira(resposta) -> dict | None:
+    return resposta.data[0] if resposta.data else None
+
+
+def ler_ticket(ticket_id: int) -> dict | None:
+    """Um ticket da v_fila, com todas as colunas (sem dado de passageiro)."""
+    return _primeira(cliente().table("v_fila").select("*").eq("id", ticket_id).execute())
+
+
+def ler_reserva(ticket_id: int) -> dict | None:
+    """Passageiro e valores. Dado pessoal: só a tela de detalhe usa."""
+    return _primeira(cliente().table("reservas_oficiais").select("*").eq("ticket_id", ticket_id).execute())
+
+
+def ler_decisao(decisao_id: int | None) -> dict | None:
+    """A decisão da IA em vigor (tickets.decisao_id). Ticket sem decisão nem consulta o banco."""
+    if decisao_id is None:
+        return None
+    return _primeira(cliente().table("decisoes_ia").select("*").eq("id", decisao_id).execute())
+
+
+def listar_eventos(ticket_id: int) -> list[dict]:
+    """Linha do tempo do ticket, da mais recente pra mais antiga."""
+    return (
+        cliente()
+        .table("eventos")
+        .select("id, campo, de, para, autor, criado_em")
+        .eq("ticket_id", ticket_id)
+        .order("criado_em", desc=True)
+        .order("id", desc=True)
+        .execute()
+        .data
+    )
+
+
 def atualizar_ticket(ticket_id: int, campos: dict) -> dict | None:
     """Grava os campos no ticket e registra quem fez.
 

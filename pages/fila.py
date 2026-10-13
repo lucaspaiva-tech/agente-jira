@@ -72,4 +72,6 @@ if evento.selection.rows:
     escolhido = filtrados[evento.selection.rows[0]]
     # session_state guarda o id entre páginas: o Detalhe lê daqui.
     st.session_state["ticket_id"] = escolhido["id"]
-    st.success(f"Ticket {escolhido['jira_key']} selecionado. Abra o Detalhe pra ver tudo.")
+    st.success(f"Ticket {escolhido['jira_key']} selecionado.")
+    if st.button("🔎 Abrir detalhe", type="primary"):
+        st.switch_page("pages/detalhe.py")

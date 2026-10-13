@@ -11,6 +11,7 @@ st.set_page_config(page_title="Agente JIRA", page_icon="🎫", layout="wide")
 # direto em "paginas"), para ficar protegida pela trava de identidade abaixo.
 PAGINAS_COM_DADOS: list = [
     st.Page("pages/fila.py", title="Fila", icon="📋"),
+    st.Page("pages/detalhe.py", title="Detalhe", icon="🔎"),
 ]
 
 # O Diagnóstico não exibe dado de passageiro: fica sempre disponível.

@@ -89,6 +89,10 @@ class ClienteLeituraFalso:
         self.chamadas.append(("select", colunas))
         return self
 
+    def eq(self, coluna, valor):
+        self.chamadas.append(("eq", coluna, valor))
+        return self
+
     def order(self, coluna, desc=False):
         self.chamadas.append(("order", coluna, desc))
         return self
@@ -99,7 +103,7 @@ class ClienteLeituraFalso:
         return self
 
     def execute(self):
-        fatia = self.linhas[self._inicio : self._fim + 1]
+        fatia = self.linhas if self._inicio is None else self.linhas[self._inicio : self._fim + 1]
 
         class Resposta:
             data = fatia
@@ -129,3 +133,63 @@ def test_listar_fila_busca_em_paginas_e_nao_perde_ticket(monkeypatch):
 def test_listar_fila_vazia(monkeypatch):
     monkeypatch.setattr(dados, "cliente", lambda: ClienteLeituraFalso([]))
     assert dados.listar_fila() == []
+
+
+# ---------------------------------------------------------------- leitura do detalhe
+@pytest.fixture
+def leitura(monkeypatch):
+    """Instala um cliente de leitura com as linhas dadas e devolve ele pra conferir as chamadas."""
+
+    def instalar(linhas):
+        falso = ClienteLeituraFalso(linhas)
+        monkeypatch.setattr(dados, "cliente", lambda: falso)
+        return falso
+
+    return instalar
+
+
+def test_ler_ticket_busca_na_v_fila_pelo_id(leitura):
+    falso = leitura([{"id": 7, "jira_key": "TESTE-7"}])
+    assert dados.ler_ticket(7) == {"id": 7, "jira_key": "TESTE-7"}
+    assert ("table", "v_fila") in falso.chamadas
+    assert ("eq", "id", 7) in falso.chamadas
+
+
+def test_ler_ticket_inexistente_devolve_none(leitura):
+    leitura([])
+    assert dados.ler_ticket(999) is None
+
+
+def test_ler_reserva_busca_em_reservas_oficiais_pelo_ticket(leitura):
+    falso = leitura([{"ticket_id": 7, "valor_repassado": 289.0}])
+    assert dados.ler_reserva(7) == {"ticket_id": 7, "valor_repassado": 289.0}
+    assert ("table", "reservas_oficiais") in falso.chamadas
+    assert ("eq", "ticket_id", 7) in falso.chamadas
+
+
+def test_ler_reserva_sem_linha_devolve_none(leitura):
+    leitura([])
+    assert dados.ler_reserva(10) is None
+
+
+def test_ler_decisao_busca_a_decisao_em_vigor(leitura):
+    falso = leitura([{"id": 41, "status_ia": "Alinhado"}])
+    assert dados.ler_decisao(41) == {"id": 41, "status_ia": "Alinhado"}
+    assert ("table", "decisoes_ia") in falso.chamadas
+    assert ("eq", "id", 41) in falso.chamadas
+
+
+def test_ler_decisao_sem_decisao_nem_encosta_no_banco(leitura):
+    falso = leitura([{"id": 41}])
+    assert dados.ler_decisao(None) is None
+    assert falso.chamadas == []
+
+
+def test_listar_eventos_do_mais_recente_pro_mais_antigo(leitura):
+    falso = leitura([{"campo": "estado"}, {"campo": "criado"}])
+    assert dados.listar_eventos(7) == [{"campo": "estado"}, {"campo": "criado"}]
+    assert ("table", "eventos") in falso.chamadas
+    assert ("eq", "ticket_id", 7) in falso.chamadas
+    assert ("order", "criado_em", True) in falso.chamadas
+    # eventos do mesmo instante (um update que muda várias colunas) saem sempre na mesma ordem
+    assert ("order", "id", True) in falso.chamadas

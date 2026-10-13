@@ -60,6 +60,37 @@ def situacao_reembolso(aprovado, reembolso_confirmado_em) -> str:
 
 
 # -----------------------------------------------------------------------------
+# Fila: filtros e contadores
+# -----------------------------------------------------------------------------
+# Ordem do fluxo, só pra exibir. Quem valida o estado é o banco (transicoes_estado).
+ESTADOS = ("processando", "falha", "pendente", "enviando", "enviado_parceiro", "decidido", "resolvido")
+ESTADOS_PADRAO_FILA = tuple(e for e in ESTADOS if e != "resolvido")
+
+
+def filtrar_fila(tickets, estados=None, empresas=None, status_ia=None, busca="") -> list[dict]:
+    """Aplica todos os filtros juntos. Lista vazia (ou None) não restringe nada.
+
+    A busca procura o trecho na chave Jira ou na reserva, sem ligar pra maiúscula.
+    """
+    termo = (busca or "").strip().lower()
+    return [
+        t
+        for t in tickets
+        if (not estados or t.get("estado") in estados)
+        and (not empresas or t.get("empresa") in empresas)
+        and (not status_ia or t.get("status_ia") in status_ia)
+        and (not termo or termo in (t.get("jira_key") or "").lower() or termo in (t.get("reserva") or "").lower())
+    ]
+
+
+def contar_por_estado(tickets) -> dict[str, int]:
+    contagem = dict.fromkeys(ESTADOS, 0)
+    for t in tickets:
+        contagem[t.get("estado")] = contagem.get(t.get("estado"), 0) + 1
+    return contagem
+
+
+# -----------------------------------------------------------------------------
 # O que o usuário pode fazer em cada ticket
 # -----------------------------------------------------------------------------
 def pode_enviar_ao_parceiro(ticket) -> bool:

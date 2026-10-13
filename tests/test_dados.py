@@ -70,3 +70,62 @@ def test_atualizar_parceiro_identificado_grava(hub, cliente_falso):
     hub(cabecalhos={"X-Hub-User-Email": "ana@buser.com.br"})
     atualizar_parceiro(3, {"whatsapp": "11999999999"})
     assert ("update", {"whatsapp": "11999999999"}) in cliente_falso.chamadas
+
+
+# ---------------------------------------------------------------- leitura da fila
+class ClienteLeituraFalso:
+    """Imita .table().select().order().range().execute() sobre uma lista de linhas."""
+
+    def __init__(self, linhas):
+        self.linhas = linhas
+        self.chamadas = []
+        self._inicio = self._fim = None
+
+    def table(self, nome):
+        self.chamadas.append(("table", nome))
+        return self
+
+    def select(self, colunas):
+        self.chamadas.append(("select", colunas))
+        return self
+
+    def order(self, coluna, desc=False):
+        self.chamadas.append(("order", coluna, desc))
+        return self
+
+    def range(self, inicio, fim):
+        self.chamadas.append(("range", inicio, fim))
+        self._inicio, self._fim = inicio, fim
+        return self
+
+    def execute(self):
+        fatia = self.linhas[self._inicio : self._fim + 1]
+
+        class Resposta:
+            data = fatia
+
+        return Resposta()
+
+
+def test_listar_fila_le_a_view_do_mais_recente_pro_mais_antigo(monkeypatch):
+    falso = ClienteLeituraFalso([{"id": 2}, {"id": 1}])
+    monkeypatch.setattr(dados, "cliente", lambda: falso)
+    assert dados.listar_fila() == [{"id": 2}, {"id": 1}]
+    assert ("table", "v_fila") in falso.chamadas
+    assert ("order", "recebido_em", True) in falso.chamadas
+
+
+def test_listar_fila_busca_em_paginas_e_nao_perde_ticket(monkeypatch):
+    # O Supabase corta a resposta num limite de linhas. Com página de 2 e 5 tickets,
+    # só traz os 5 quem pede página por página até vir uma incompleta.
+    falso = ClienteLeituraFalso([{"id": i} for i in range(5, 0, -1)])
+    monkeypatch.setattr(dados, "cliente", lambda: falso)
+    monkeypatch.setattr(dados, "TAMANHO_PAGINA", 2)
+    assert [t["id"] for t in dados.listar_fila()] == [5, 4, 3, 2, 1]
+    paginas = [c[1:] for c in falso.chamadas if c[0] == "range"]
+    assert paginas == [(0, 1), (2, 3), (4, 5)]
+
+
+def test_listar_fila_vazia(monkeypatch):
+    monkeypatch.setattr(dados, "cliente", lambda: ClienteLeituraFalso([]))
+    assert dados.listar_fila() == []

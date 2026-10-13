@@ -185,3 +185,58 @@ def test_sem_nenhum_contato():
 
 def test_empresas_sem_parceiro():
     assert d.empresas_sem_parceiro(["A", "B ", None, "", "C"], ["A", "C "]) == ["B"]
+
+
+# ---------------------------------------------------------------- fila: filtros e contadores
+FILA = [
+    {"jira_key": "TESTE-3", "estado": "enviado_parceiro", "empresa": "Viação A", "reserva": "TST003", "status_ia": "Alinhado"},
+    {"jira_key": "TESTE-4", "estado": "enviado_parceiro", "empresa": "Viação B", "reserva": "TST004", "status_ia": "Divergente"},
+    {"jira_key": "TESTE-5", "estado": "decidido", "empresa": "Viação A", "reserva": "TST005", "status_ia": "Alinhado"},
+    {"jira_key": "TESTE-50", "estado": "resolvido", "empresa": "Viação A", "reserva": "XYZ999", "status_ia": "Alinhado"},
+    {"jira_key": "TESTE-9", "estado": "falha", "empresa": None, "reserva": None, "status_ia": None},
+]
+
+
+def chaves(tickets):
+    return [t["jira_key"] for t in tickets]
+
+
+def test_filtro_vazio_nao_restringe_nada():
+    assert chaves(d.filtrar_fila(FILA)) == chaves(FILA)
+
+
+def test_filtra_por_estado():
+    assert chaves(d.filtrar_fila(FILA, estados=["enviado_parceiro"])) == ["TESTE-3", "TESTE-4"]
+
+
+def test_filtra_por_empresa_e_status_da_ia():
+    assert chaves(d.filtrar_fila(FILA, empresas=["Viação B"])) == ["TESTE-4"]
+    assert chaves(d.filtrar_fila(FILA, status_ia=["Alinhado"])) == ["TESTE-3", "TESTE-5", "TESTE-50"]
+
+
+def test_busca_pela_reserva_sem_ligar_pra_maiuscula():
+    assert chaves(d.filtrar_fila(FILA, busca=" tst005 ")) == ["TESTE-5"]
+
+
+def test_busca_pela_chave_jira():
+    # "teste-5" também está dentro de "TESTE-50": a busca é por trecho, as duas aparecem.
+    assert chaves(d.filtrar_fila(FILA, busca="teste-5")) == ["TESTE-5", "TESTE-50"]
+    assert chaves(d.filtrar_fila(FILA, busca="TESTE-9")) == ["TESTE-9"]
+
+
+def test_filtros_e_busca_valem_juntos():
+    resultado = d.filtrar_fila(FILA, estados=["decidido", "enviado_parceiro"], empresas=["Viação A"], busca="tst")
+    assert chaves(resultado) == ["TESTE-3", "TESTE-5"]
+
+
+def test_contar_por_estado_segue_a_ordem_do_fluxo_e_mostra_zero():
+    contagem = d.contar_por_estado(FILA)
+    assert list(contagem) == list(d.ESTADOS)
+    assert contagem["enviado_parceiro"] == 2
+    assert contagem["pendente"] == 0
+    assert sum(contagem.values()) == len(FILA)
+
+
+def test_estados_padrao_da_fila_escondem_so_resolvido():
+    assert "resolvido" not in d.ESTADOS_PADRAO_FILA
+    assert set(d.ESTADOS_PADRAO_FILA) | {"resolvido"} == set(d.ESTADOS)

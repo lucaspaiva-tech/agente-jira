@@ -368,3 +368,43 @@ def test_envio_sem_operador_recusado_pelo_banco_vira_mensagem_simples():
     texto = d.mensagem_de_erro(erro)
     assert "acionar operador" in texto
     assert "Failing row" not in texto
+
+
+# ---------------------------------------------------------------- parceiros: contato
+@pytest.mark.parametrize("whatsapp, email", [
+    ("11 99999-9999", None), ("+55 (11) 3333-4444", ""), ("GRUPO", None), (" grupo ", None),
+    (None, "parceiro@empresa.com"), ("", " parceiro@empresa.com.br "), (None, None),
+])
+def test_contato_valido(whatsapp, email):
+    assert d.validar_contato(whatsapp, email) is None
+
+
+@pytest.mark.parametrize("whatsapp, email, trecho", [
+    ("9999", None, "WhatsApp"), ("ligar pro João", None, "WhatsApp"), ("11 99999-9999 (João)", None, "WhatsApp"),
+    (None, "parceiro.empresa.com", "E-mail"), (None, "a@b", "E-mail"), (None, "a b@c.com", "E-mail"),
+])
+def test_contato_invalido_diz_qual_campo(whatsapp, email, trecho):
+    assert trecho in d.validar_contato(whatsapp, email)
+
+
+def test_mudancas_de_contato_traz_so_o_que_mudou_e_limpa_espacos():
+    antes = [{"id": 1, "whatsapp": "11999999999", "email": None},
+             {"id": 2, "whatsapp": None, "email": "a@b.com"},
+             {"id": 3, "whatsapp": None, "email": None}]
+    depois = [{"id": 1, "whatsapp": "11999999999", "email": " novo@b.com "},
+              {"id": 2, "whatsapp": None, "email": "a@b.com"},
+              {"id": 3, "whatsapp": "  ", "email": ""}]  # só espaço/vazio continua sendo "sem contato"
+    assert d.mudancas_de_contato(antes, depois) == {1: {"email": "novo@b.com"}}
+
+
+def test_apagar_um_contato_vira_vazio_de_verdade():
+    antes = [{"id": 1, "whatsapp": "11999999999", "email": "a@b.com"}]
+    depois = [{"id": 1, "whatsapp": "", "email": "a@b.com"}]
+    assert d.mudancas_de_contato(antes, depois) == {1: {"whatsapp": None}}
+
+
+def test_nome_ja_usado_recusado_pelo_banco_vira_mensagem_simples():
+    erro = ErroDoBanco('duplicate key value violates unique constraint "parceiro_nomes_pkey"')
+    texto = d.mensagem_de_erro(erro)
+    assert "já está ligado a um parceiro" in texto
+    assert "duplicate" not in texto

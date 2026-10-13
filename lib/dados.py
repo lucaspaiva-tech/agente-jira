@@ -94,6 +94,33 @@ def atualizar_ticket(ticket_id: int, campos: dict) -> dict | None:
     return resposta.data[0] if resposta.data else None
 
 
+def listar_parceiros() -> list[dict]:
+    """Parceiros por nome, cada um com 'nomes': os nomes de empresa ligados a ele."""
+    parceiros = (
+        cliente()
+        .table("parceiros")
+        .select("id, nome, whatsapp, email, planilha_id, contato_pendente")
+        .order("nome")
+        .execute()
+        .data
+    )
+    nomes = cliente().table("parceiro_nomes").select("nome, parceiro_id").order("nome").execute().data
+    for parceiro in parceiros:
+        parceiro["nomes"] = [n["nome"] for n in nomes if n["parceiro_id"] == parceiro["id"]]
+    return parceiros
+
+
+def adicionar_nome_parceiro(nome: str, parceiro_id: int) -> dict | None:
+    """Liga um nome de empresa a um parceiro. O banco liga os tickets e recusa nome repetido."""
+    email, _ = usuario_atual()
+    if not email:
+        raise UsuarioNaoIdentificado("Não foi possível identificar o usuário. Ação bloqueada.")
+
+    payload = {"nome": nome.strip(), "parceiro_id": parceiro_id}
+    resposta = cliente().table("parceiro_nomes").insert(payload).execute()
+    return resposta.data[0] if resposta.data else None
+
+
 def atualizar_parceiro(parceiro_id: int, campos: dict) -> dict | None:
     """Mesma regra de identificação, para a tabela parceiros."""
     email, _ = usuario_atual()

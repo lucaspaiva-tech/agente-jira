@@ -243,3 +243,64 @@ def test_acao_sem_usuario_nao_toca_no_banco(hub, cliente_falso):
     with pytest.raises(UsuarioNaoIdentificado):
         dados.enviar_ao_parceiro(13)
     assert cliente_falso.chamadas == []
+
+
+# ---------------------------------------------------------------- parceiros (Tarefa 4)
+class ClienteTabelasFalso:
+    """Uma lista de linhas por tabela. Guarda as chamadas, inclusive o insert."""
+
+    def __init__(self, tabelas):
+        self.tabelas = tabelas
+        self.chamadas = []
+        self._tabela = None
+
+    def table(self, nome):
+        self.chamadas.append(("table", nome))
+        self._tabela = nome
+        return self
+
+    def select(self, colunas):
+        return self
+
+    def order(self, coluna, desc=False):
+        return self
+
+    def insert(self, payload):
+        self.chamadas.append(("insert", self._tabela, payload))
+        return self
+
+    def execute(self):
+        linhas = self.tabelas.get(self._tabela, [])
+
+        class Resposta:
+            data = linhas
+
+        return Resposta()
+
+
+def test_listar_parceiros_junta_os_nomes_de_empresa_de_cada_um(monkeypatch):
+    falso = ClienteTabelasFalso({
+        "parceiros": [{"id": 1, "nome": "Viação A"}, {"id": 2, "nome": "Viação B"}],
+        "parceiro_nomes": [{"nome": "VIACAO A LTDA", "parceiro_id": 1}, {"nome": "Viação A", "parceiro_id": 1}],
+    })
+    monkeypatch.setattr(dados, "cliente", lambda: falso)
+    parceiros = dados.listar_parceiros()
+    assert parceiros[0]["nomes"] == ["VIACAO A LTDA", "Viação A"]
+    assert parceiros[1]["nomes"] == []  # parceiro sem nome cadastrado não some
+
+
+def test_adicionar_nome_grava_sem_espaco_nas_pontas(hub, monkeypatch):
+    falso = ClienteTabelasFalso({"parceiro_nomes": [{"nome": "AO - Ponce Turismo", "parceiro_id": 4}]})
+    monkeypatch.setattr(dados, "cliente", lambda: falso)
+    hub(cabecalhos={"X-Hub-User-Email": "ana@buser.com.br"})
+    dados.adicionar_nome_parceiro("  AO - Ponce Turismo ", 4)
+    assert ("insert", "parceiro_nomes", {"nome": "AO - Ponce Turismo", "parceiro_id": 4}) in falso.chamadas
+
+
+def test_adicionar_nome_sem_usuario_nao_toca_no_banco(hub, monkeypatch):
+    falso = ClienteTabelasFalso({})
+    monkeypatch.setattr(dados, "cliente", lambda: falso)
+    hub()
+    with pytest.raises(UsuarioNaoIdentificado):
+        dados.adicionar_nome_parceiro("AO - Ponce Turismo", 4)
+    assert falso.chamadas == []

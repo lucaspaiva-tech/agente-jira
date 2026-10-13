@@ -197,6 +197,8 @@ def mensagem_de_erro(erro) -> str:
         )
     if "tickets_envio_exige_operador_e_parceiro" in texto:
         return 'Enquanto o ticket está com o parceiro, "acionar operador" precisa ficar marcado e o parceiro definido.'
+    if "parceiro_nomes_pkey" in texto:
+        return "Esse nome de empresa já está ligado a um parceiro: nada foi gravado."
     if "Reembolso já confirmado" in texto:
         return "O reembolso deste ticket já foi confirmado: a autorização de liderança não muda mais."
     return "Não consegui gravar agora. Tente de novo; se continuar, abra o Diagnóstico."
@@ -374,6 +376,40 @@ def link_contato(whatsapp, email, planilha_id) -> dict:
         return {"tipo": "email", "rotulo": "✉️ Enviar E-mail",
                 "url": f"https://mail.google.com/mail/?view=cm&fs=1&to={para}&su={assunto}&body={mensagem}"}
     return {"tipo": "sem_contato", "rotulo": "Sem contato cadastrado", "url": None}
+
+
+def _limpo(valor) -> str | None:
+    """Texto sem espaço nas pontas; vazio vira None (sem contato de verdade)."""
+    texto = str(valor or "").strip()
+    return texto or None
+
+
+def validar_contato(whatsapp, email) -> str | None:
+    """None se dá pra gravar; senão, o que está errado. Vazio vale (parceiro sem contato)."""
+    whatsapp, email = _limpo(whatsapp), _limpo(email)
+    if whatsapp and whatsapp.lower() != "grupo":
+        telefone = limpar_telefone(whatsapp)
+        if not telefone or len(telefone) not in (12, 13) or re.search(r"[a-zA-Z]", whatsapp):
+            return f"WhatsApp inválido ({whatsapp}): use o telefone com DDD ou a palavra GRUPO."
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return f"E-mail inválido ({email})."
+    return None
+
+
+def mudancas_de_contato(antes, depois) -> dict[int, dict]:
+    """{parceiro_id: campos que mudaram} comparando WhatsApp e e-mail, já limpos."""
+    originais = {p["id"]: p for p in antes}
+    mudancas = {}
+    for linha in depois:
+        original = originais[linha["id"]]
+        campos = {
+            campo: _limpo(linha.get(campo))
+            for campo in ("whatsapp", "email")
+            if _limpo(linha.get(campo)) != _limpo(original.get(campo))
+        }
+        if campos:
+            mudancas[linha["id"]] = campos
+    return mudancas
 
 
 def empresas_sem_parceiro(empresas_dos_tickets, nomes_cadastrados) -> list[str]:

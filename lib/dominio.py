@@ -83,12 +83,6 @@ def rotulo_estado(estado) -> str:
     return ROTULO_ESTADO.get(estado, estado)
 
 
-def rotulo_estado_fila(ticket) -> str:
-    """Estado na tabela da fila; ticket com erro ganha o sinal ⚠️ (o texto fica no detalhe)."""
-    rotulo = rotulo_estado(ticket.get("estado"))
-    return f"⚠️ {rotulo}" if ticket.get("erro") else rotulo
-
-
 # -----------------------------------------------------------------------------
 # Visão geral: o que precisa de ação humana agora
 # -----------------------------------------------------------------------------
@@ -490,10 +484,148 @@ def descrever_evento(evento) -> str:
 
 
 # -----------------------------------------------------------------------------
+# Detalhe: etapas, próximo passo, reembolso e histórico
+# -----------------------------------------------------------------------------
+def etapas_do_ticket(ticket) -> list[dict]:
+    """As 5 etapas do fluxo, cada uma 'concluida', 'atual', 'pendente', 'falha' ou 'pulada', com a data
+    quando o banco tem (o trigger carimba). A 'atual' é a próxima a ser alcançada."""
+    estado = ticket.get("estado")
+    foi_ao_parceiro = bool(ticket.get("enviado_parceiro_em"))
+    # Quantas etapas o ticket já alcançou, na ordem do fluxo.
+    alcancadas = {"processando": 1, "falha": 1, "pendente": 2, "enviando": 2, "enviado_parceiro": 3,
+                  "decidido": 4, "resolvido": 5}.get(estado, 1)
+    nomes = ["Recebido", "IA decidiu", "Com o parceiro", "Respondido", "Resolvido"]
+    datas = [ticket.get("recebido_em"), None, ticket.get("enviado_parceiro_em"), ticket.get("decidido_em"),
+             ticket.get("resolvido_em")]
+    etapas = []
+    for i, (nome, quando) in enumerate(zip(nomes, datas, strict=True)):
+        if i < alcancadas:
+            situacao = "concluida"
+        elif i == alcancadas:
+            situacao = "falha" if estado == "falha" else "atual"
+        else:
+            situacao = "pendente"
+        pulou_parceiro = not foi_ao_parceiro and estado != "enviado_parceiro"
+        if nome == "Com o parceiro" and situacao == "concluida" and pulou_parceiro:
+            situacao = "pulada"  # decidido sem passar pelo parceiro (decisão automática ou manual)
+        etapas.append({"nome": nome, "estado": situacao, "quando": quando})
+    return etapas
+
+
+def proximo_passo(ticket, acoes) -> tuple[str, str]:
+    """(título, frase) do que fazer agora. A ação em si vem de acoes_disponiveis/acao_principal."""
+    estado = ticket.get("estado")
+    if estado == "processando":
+        return "A IA está analisando", "O n8n está consultando a reserva e o parecer. Volte em alguns minutos."
+    if estado == "falha":
+        return "Falha no processamento", "O n8n tenta de novo sozinho. Se a falha continuar, avise quem cuida do n8n."
+    if estado == "enviando":
+        return "Enviando ao parceiro", "O n8n está escrevendo a linha na planilha do parceiro."
+    if estado == "pendente":
+        if "enviar_ao_parceiro" in acoes:
+            return "Enviar ao parceiro", "A IA pediu a análise do parceiro. Envie à planilha ou decida manualmente."
+        if ticket.get("acionar_operador") and ticket.get("parceiro_id") is None:
+            return "Empresa sem parceiro", "Ligue a empresa a um parceiro na tela Parceiros, ou decida manualmente."
+        return "Decidir manualmente", "Não há envio ao parceiro previsto: registre a decisão."
+    if estado == "enviado_parceiro":
+        if ticket.get("situacao_sla") == "estourado":
+            return "Parceiro atrasado", "Passou de 48h sem resposta. Cobre o parceiro ou registre a decisão manual."
+        return "Aguardando o parceiro", "A resposta chega pela planilha. Se precisar, registre a decisão manual."
+    if estado == "decidido":
+        if "confirmar_reembolso" in acoes:
+            return ("Confirmar o reembolso",
+                    "O parceiro aprovou. Confirme quando fizer o reembolso: o banco decide o destino.")
+        if classificar_aprovacao(ticket.get("aprovado")) == "reprovado":
+            return "Parceiro recusou", "Não cabe reembolso. Resolva o ticket pra tirar da fila."
+        return "Arquivar o ticket", "Tudo resolvido por aqui: resolva pra tirar da fila."
+    if estado == "resolvido":
+        return "Ticket resolvido", "Arquivado. Se precisar mexer de novo, reabra."
+    return "Sem ação", ""
+
+
+def tempo_relativo(momento, agora) -> str:
+    """'há 3 h', 'há 2 dias'. A data completa fica ao lado, na tela."""
+    momento = _como_datetime(momento)
+    if momento is None:
+        return "—"
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    segundos = (agora - momento).total_seconds()
+    if segundos < 60:
+        return "agora há pouco"
+    if segundos < 3600:
+        return f"há {int(segundos // 60)} min"
+    if segundos < 86400:
+        return f"há {int(segundos // 3600)} h"
+    dias = int(segundos // 86400)
+    return "há 1 dia" if dias == 1 else f"há {dias} dias"
+
+
+def vizinhos(ids, atual) -> tuple:
+    """(anterior, próximo) na lista que estava na Fila. Fora dela, sem navegação."""
+    if atual not in ids:
+        return None, None
+    i = ids.index(atual)
+    return (ids[i - 1] if i > 0 else None), (ids[i + 1] if i + 1 < len(ids) else None)
+
+
+def eh_automatico(autor) -> bool:
+    """Gente grava com e-mail; n8n, triggers e importação gravam um nome de sistema."""
+    return "@" not in str(autor or "")
+
+
+def itens_reembolso(ticket, valor_repassado) -> list[tuple[str, str]]:
+    """Lista de status do reembolso: [(estado, texto)], estado em 'feito', 'esperando', 'pendente',
+    'alerta' ou 'nao_se_aplica'."""
+    classe = classificar_aprovacao(ticket.get("aprovado"))
+    if classe == "reprovado":
+        return [("feito", "Parceiro recusou (Não)"), ("nao_se_aplica", "Não cabe reembolso")]
+    if classe == "indefinido":
+        return [("esperando", "Sem resposta do parceiro"), ("pendente", "Reembolso depende da resposta")]
+
+    itens = [("feito", "Parceiro aprovou (Sim)")]
+    confirmado = ticket.get("reembolso_confirmado_em")
+    if confirmado:
+        itens.append(("feito", f"Reembolso confirmado em {formatar_data_hora(confirmado)}"))
+    else:
+        itens.append(("esperando", "Reembolso a confirmar"))
+    itens.append(("feito" if confirmado else "pendente",
+                  f"Vai para: {descricao_destino_reembolso(ticket.get('destino_reembolso'))}"))
+
+    status = ticket.get("multa_status")
+    if status == "encontrada":
+        if multa_confere(ticket.get("multa_valor"), valor_repassado):
+            itens.append(("feito", f"Multa de {formatar_real(ticket.get('multa_valor'))}, igual ao repassado"))
+        else:
+            itens.append(("alerta", f"Multa de {formatar_real(ticket.get('multa_valor'))}, diferente do repassado "
+                                    f"({formatar_real(valor_repassado)})"))
+    elif status == "custo_bx":
+        itens.append(("feito", "Custo assumido por BX"))
+    elif status in ("nao_encontrada", "erro"):
+        itens.append(("alerta", descricao_multa(status, None, None)[0]))
+    elif status == "aguardando":
+        itens.append(("esperando", "Multa aguardando registro no banco"))
+    elif confirmado:
+        itens.append(("pendente", "Multa ainda não registrada"))
+    return itens
+
+
+# -----------------------------------------------------------------------------
 # Contato com o parceiro
 # -----------------------------------------------------------------------------
 def link_planilha(planilha_id) -> str:
     return f"https://docs.google.com/spreadsheets/d/{planilha_id}/edit"
+
+
+def links_planilha_por_parceiro(parceiros) -> dict[int, str]:
+    """Id do parceiro → link da planilha dele. Na Fila, o nome da empresa vira esse link."""
+    return {p["id"]: link_planilha(p["planilha_id"]) for p in parceiros if p.get("planilha_id")}
+
+
+def link_markdown(texto, url) -> str:
+    """Link em markdown com o texto escapado: colchete ou asterisco no nome não quebram o link."""
+    escapado = re.sub(r"([\\`*_\[\]])", r"\\\1", str(texto))
+    return f"[{escapado}]({url})" if url else escapado
 
 
 def limpar_telefone(bruto) -> str | None:

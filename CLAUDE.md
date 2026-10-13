@@ -68,6 +68,7 @@ n8n reage.
 | `lib/identidade.py` | `usuario_atual()`: e-mail de quem usa, só pelo cabeçalho `X-Hub-User-Email` |
 | `lib/dados.py` | TODA leitura e escrita no banco: `contar`, `atualizar_ticket`, `atualizar_parceiro` e as de leitura das telas |
 | `lib/dominio.py` | regras só da página, funções puras: aprovação, reembolso, ações permitidas, multa, formatação, contato |
+| `lib/tabela.py` | tabela de tickets (cabeçalho escuro, etiquetas, chave abre o Detalhe, empresa abre a planilha): Fila e Visão geral |
 | `telas/diagnostico.py` | confere segredos, conexão e identidade. Única página sem trava |
 | `scripts/gerar_seed.py` | gera o SQL de importação a partir da exportação `.xlsx` da planilha |
 | `supabase/migrations/` | schema do banco (fonte da verdade das colunas) |

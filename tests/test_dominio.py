@@ -421,11 +421,6 @@ def test_estado_desconhecido_aparece_como_veio():
     assert d.rotulo_estado("novo_estado") == "novo_estado"
 
 
-def test_estado_na_fila_sinaliza_ticket_com_erro():
-    assert d.rotulo_estado_fila({"estado": "falha", "erro": "Databricks fora"}) == "⚠️ Falha"
-    assert d.rotulo_estado_fila({"estado": "pendente", "erro": None}) == "Pendente"
-
-
 @pytest.mark.parametrize("situacao, texto, esperado", [
     ("estourado", "2d 12h", "🔴 Estourado · 2d 12h"),
     ("no_prazo", "10h", "🟢 No prazo · 10h"),
@@ -566,3 +561,140 @@ def test_paginar_lista_vazia_tem_uma_pagina():
 ])
 def test_faixa_da_pagina(pagina, total, esperado):
     assert d.faixa_da_pagina(pagina, 10, total) == esperado
+
+
+# ---------------------------------------------------------------- detalhe redesenhado
+def estados_das_etapas(ticket):
+    return [(e["nome"], e["estado"]) for e in d.etapas_do_ticket(ticket)]
+
+
+def test_etapas_de_ticket_com_o_parceiro():
+    t = {"estado": "enviado_parceiro", "recebido_em": "2026-10-01T10:00:00+00:00",
+         "enviado_parceiro_em": "2026-10-02T10:00:00+00:00"}
+    assert estados_das_etapas(t) == [("Recebido", "concluida"), ("IA decidiu", "concluida"),
+                                     ("Com o parceiro", "concluida"), ("Respondido", "atual"),
+                                     ("Resolvido", "pendente")]
+    assert d.etapas_do_ticket(t)[2]["quando"] == "2026-10-02T10:00:00+00:00"
+
+
+def test_etapas_de_ticket_pendente_e_processando():
+    assert [e for _, e in estados_das_etapas({"estado": "pendente"})] == [
+        "concluida", "concluida", "atual", "pendente", "pendente"]
+    assert [e for _, e in estados_das_etapas({"estado": "processando"})] == [
+        "concluida", "atual", "pendente", "pendente", "pendente"]
+
+
+def test_falha_aparece_na_etapa_da_ia():
+    assert estados_das_etapas({"estado": "falha"})[1] == ("IA decidiu", "falha")
+
+
+def test_decidido_sem_passar_pelo_parceiro_pula_a_etapa():
+    t = {"estado": "decidido", "enviado_parceiro_em": None, "decidido_em": "2026-10-03T10:00:00+00:00"}
+    assert [e for _, e in estados_das_etapas(t)] == ["concluida", "concluida", "pulada", "concluida", "atual"]
+
+
+def test_resolvido_conclui_todas_as_etapas():
+    t = {"estado": "resolvido", "enviado_parceiro_em": "2026-10-02T10:00:00+00:00"}
+    assert all(e == "concluida" for _, e in estados_das_etapas(t))
+
+
+@pytest.mark.parametrize("ticket, trecho", [
+    ({"estado": "processando"}, "analisando"),
+    ({"estado": "falha"}, "Falha"),
+    ({"estado": "enviando"}, "Enviando"),
+    ({"estado": "pendente", "acionar_operador": True, "parceiro_id": 1}, "Enviar ao parceiro"),
+    ({"estado": "pendente", "acionar_operador": True, "parceiro_id": None}, "sem parceiro"),
+    ({"estado": "pendente", "acionar_operador": False, "parceiro_id": 1}, "Decidir"),
+    ({"estado": "enviado_parceiro", "situacao_sla": "estourado"}, "atrasado"),
+    ({"estado": "enviado_parceiro", "situacao_sla": "no_prazo"}, "Aguardando"),
+    ({"estado": "decidido", "aprovado": "Sim", "reembolso_confirmado_em": None}, "Confirmar"),
+    ({"estado": "decidido", "aprovado": "Sim", "reembolso_confirmado_em": "2026-10-04T10:00:00+00:00"}, "Arquivar"),
+    ({"estado": "decidido", "aprovado": "Não"}, "recusou"),
+    ({"estado": "resolvido"}, "resolvido"),
+])
+def test_proximo_passo_diz_o_que_fazer_em_cada_situacao(ticket, trecho):
+    titulo, texto = d.proximo_passo(ticket, d.acoes_disponiveis(ticket))
+    assert trecho.lower() in f"{titulo} {texto}".lower()
+
+
+AGORA = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("momento, esperado", [
+    ("2026-10-13T11:59:30+00:00", "agora há pouco"),
+    ("2026-10-13T11:20:00+00:00", "há 40 min"),
+    ("2026-10-13T09:00:00+00:00", "há 3 h"),
+    ("2026-10-12T09:00:00+00:00", "há 1 dia"),
+    ("2026-10-01T12:00:00+00:00", "há 12 dias"),
+    (None, "—"),
+])
+def test_tempo_relativo(momento, esperado):
+    assert d.tempo_relativo(momento, AGORA) == esperado
+
+
+def test_vizinhos_na_lista_da_fila():
+    ids = [10, 20, 30]
+    assert d.vizinhos(ids, 20) == (10, 30)
+    assert d.vizinhos(ids, 10) == (None, 20)
+    assert d.vizinhos(ids, 30) == (20, None)
+    assert d.vizinhos(ids, 99) == (None, None)   # aberto por outro caminho: sem navegação
+    assert d.vizinhos([], 10) == (None, None)
+
+
+def test_autor_automatico_e_o_que_nao_e_email():
+    assert d.eh_automatico("n8n") and d.eh_automatico("sistema") and d.eh_automatico("importacao")
+    assert not d.eh_automatico("ana@buser.com.br")
+
+
+def estados_reembolso(ticket, repassado=None):
+    return [estado for estado, _ in d.itens_reembolso(ticket, repassado)]
+
+
+def test_reembolso_aguardando_confirmacao():
+    t = {"aprovado": "Sim", "reembolso_confirmado_em": None, "destino_reembolso": "multa_parceiro"}
+    itens = d.itens_reembolso(t, 144.0)
+    assert [e for e, _ in itens][:2] == ["feito", "esperando"]
+    assert any("Multa na carteira do parceiro" in texto for _, texto in itens)
+
+
+def test_reembolso_com_multa_batendo_com_o_repassado():
+    t = {"aprovado": "Sim", "reembolso_confirmado_em": "2026-10-04T10:00:00+00:00",
+         "destino_reembolso": "multa_parceiro", "multa_status": "encontrada", "multa_valor": 289.0}
+    itens = d.itens_reembolso(t, 289.0)
+    assert itens[-1][0] == "feito" and "igual ao repassado" in itens[-1][1]
+
+
+def test_multa_diferente_do_repassado_vira_alerta():
+    t = {"aprovado": "Sim", "reembolso_confirmado_em": "2026-10-04T10:00:00+00:00",
+         "destino_reembolso": "multa_parceiro", "multa_status": "encontrada", "multa_valor": 100.0}
+    assert d.itens_reembolso(t, 289.0)[-1][0] == "alerta"
+
+
+def test_parceiro_recusou_nao_cabe_reembolso():
+    assert estados_reembolso({"aprovado": "Não"}) == ["feito", "nao_se_aplica"]
+
+
+def test_sem_resposta_do_parceiro():
+    assert estados_reembolso({"aprovado": None})[0] == "esperando"
+
+
+# ---------------------------------------------------------------- link da planilha na Fila
+def test_links_planilha_por_parceiro():
+    parceiros = [{"id": 1, "planilha_id": "abc"}, {"id": 2, "planilha_id": None}, {"id": 3, "planilha_id": "xyz"}]
+    assert d.links_planilha_por_parceiro(parceiros) == {
+        1: "https://docs.google.com/spreadsheets/d/abc/edit",
+        3: "https://docs.google.com/spreadsheets/d/xyz/edit",
+    }
+
+
+def test_link_markdown_com_url():
+    assert d.link_markdown("Mactur", "https://x.com/a") == "[Mactur](https://x.com/a)"
+
+
+def test_link_markdown_escapa_o_nome():
+    # Colchete no nome fecharia o link antes da hora; asterisco viraria negrito.
+    assert d.link_markdown("Viação [SP] *Sul*", "https://x.com") == r"[Viação \[SP\] \*Sul\*](https://x.com)"
+
+
+def test_link_markdown_sem_url_fica_so_o_texto():
+    assert d.link_markdown("Viação_Sul", None) == r"Viação\_Sul"

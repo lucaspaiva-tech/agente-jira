@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 
-import pandas as pd
 import streamlit as st
 
 from lib.dados import listar_fila, listar_parceiros
@@ -10,14 +9,14 @@ from lib.dominio import (
     empresas_sem_parceiro_com_tickets,
     fila_de_urgencia,
     formatar_data_hora,
+    links_planilha_por_parceiro,
     resumo_da_fila,
-    rotulo_estado_fila,
-    texto_sla,
 )
+from lib.tabela import cabecalho, linha
 
-# Clique numa linha da tabela de urgentes: abre o Detalhe antes de ler o banco de novo.
-if st.session_state.pop("abrir_detalhe", False):
-    st.switch_page("telas/detalhe.py")
+# Mesma tabela da Fila, em menos colunas pra caber ao lado dos avisos: sem "Recebido em" (a ordem
+# já é por urgência e antiguidade) e sem "Status da IA" (fica na Fila e no Detalhe).
+COLUNAS = ["chave", "empresa", "estado", "sla"]
 
 try:
     tickets = listar_fila()
@@ -28,10 +27,11 @@ except Exception:
     st.stop()
 
 resumo = resumo_da_fila(tickets)
+links_planilha = links_planilha_por_parceiro(parceiros)
 urgentes = fila_de_urgencia(tickets)
 
 
-def cartao_destaque(numero: int, detalhe: str) -> str:
+def cartao_destaque(numero: int) -> str:
     """Cartão grande em degradê rosa (paleta Buser). HTML próprio, com estilo só dentro dele."""
     return f"""
     <div style="position:relative; overflow:hidden; border-radius:0.75rem; padding:1.75rem 2rem;
@@ -43,70 +43,45 @@ def cartao_destaque(numero: int, detalhe: str) -> str:
                   border-radius:50%; background:rgba(255,255,255,0.25);"></div>
       <div style="font-size:1rem; font-weight:500;">Precisa de você</div>
       <div style="font-size:2.75rem; font-weight:700; line-height:1.2;">{numero} tickets</div>
-      <div style="font-size:0.9rem; margin-top:0.25rem;">{detalhe}</div>
     </div>
     """
 
 
-principal, lateral = st.columns([5, 2], gap="medium")
+st.title("Visão geral")
+st.caption(f"{len(tickets)} tickets no total · atualizado em {formatar_data_hora(datetime.now(UTC))}")
+
+# Topo na largura toda: com 5 cartões lado a lado, a coluna estreita cortava os títulos.
+# Só o número no cartão rosa: o detalhe de cada estado está nos cartões logo abaixo.
+st.html(cartao_destaque(resumo["precisa_de_voce"]))
+
+# Cartões de número: st.metric nativo, com ícone e borda.
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("Pendentes", resumo["pendentes"], icon=":material/pending_actions:", border=True)
+c2.metric("SLA estourado", resumo["sla_estourado"], icon=":material/alarm:", border=True)
+c3.metric("Respondidos", resumo["respondidos"], icon=":material/task_alt:", border=True)
+c4.metric("Com o parceiro", resumo["com_parceiro"], icon=":material/forward_to_inbox:", border=True)
+c5.metric("Com falha", resumo["falhas"], icon=":material/error:", border=True)
+st.caption(
+    "Respondidos: falta confirmar o reembolso ou resolver. "
+    "SLA estourado: com o parceiro há mais de 48h sem resposta. "
+    "Com falha: a análise da IA deu erro e o ticket precisa ser reprocessado."
+)
+
+principal, lateral = st.columns([3, 1], gap="medium")
 
 with principal:
-    st.title("Visão geral")
-    st.caption(f"{len(tickets)} tickets no total · atualizado em {formatar_data_hora(datetime.now(UTC))}")
-
-    st.html(
-        cartao_destaque(
-            resumo["precisa_de_voce"],
-            f"{resumo['pendentes']} pendentes · {resumo['sla_estourado']} com SLA estourado · "
-            f"{resumo['respondidos']} respondidos · {resumo['falhas']} com falha",
-        )
-    )
-
-    # Cartões de número: st.metric nativo, com ícone e borda.
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Pendentes", resumo["pendentes"], icon=":material/pending_actions:", border=True)
-    c2.metric("SLA estourado", resumo["sla_estourado"], icon=":material/alarm:", border=True)
-    c3.metric("Respondidos", resumo["respondidos"], icon=":material/task_alt:", border=True)
-    c4.metric("Com o parceiro", resumo["com_parceiro"], icon=":material/forward_to_inbox:", border=True)
-    st.caption(
-        "Respondidos: falta confirmar o reembolso ou resolver. "
-        "SLA estourado: com o parceiro há mais de 48h sem resposta."
-    )
-
     with st.container(border=True):
         st.markdown("#### Mais urgentes")
         if not urgentes:
             st.caption("Nada pedindo ação agora. 🎉")
         else:
             mostrar = urgentes[:10]
-            st.caption(
-                f"Mostrando {len(mostrar)} de {len(urgentes)}, do mais urgente pro menos. Clique numa linha pra abrir."
-            )
-
-            def abrir_ticket():
-                """Chamada só quando a seleção MUDA: voltar pra cá não reabre o Detalhe sozinho."""
-                linhas = st.session_state["tabela_urgentes"]["selection"]["rows"]
-                if linhas:
-                    st.session_state["ticket_id"] = mostrar[linhas[0]]["id"]
-                    st.session_state["abrir_detalhe"] = True
-
-            st.dataframe(
-                pd.DataFrame(
-                    {
-                        "Chave Jira": [t["jira_key"] for t in mostrar],
-                        "Empresa": [t.get("empresa") or "—" for t in mostrar],
-                        "Estado": [rotulo_estado_fila(t) for t in mostrar],
-                        # Sem "Recebido em": a ordem já é por urgência e antiguidade; a data fica na Fila.
-                        "SLA": [texto_sla(t.get("situacao_sla"), t.get("sla_texto")) for t in mostrar],
-                    }
-                ),
-                hide_index=True,
-                width="stretch",
-                on_select=abrir_ticket,
-                selection_mode="single-row",
-                column_config={"SLA": st.column_config.TextColumn(width="medium")},
-                key="tabela_urgentes",
-            )
+            st.caption(f"Mostrando {len(mostrar)} de {len(urgentes)}, do mais urgente pro menos.")
+            st.html(cabecalho(COLUNAS))
+            # Ao abrir um ticket, o Anterior e o Próximo do Detalhe seguem a ordem de urgência.
+            ordem = [t["id"] for t in urgentes]
+            for ticket in mostrar:
+                linha(ticket, COLUNAS, links_planilha, lista_detalhe=ordem)
             if st.button("Ver a fila completa", type="tertiary", icon=":material/arrow_forward:"):
                 st.switch_page("telas/fila.py")
 

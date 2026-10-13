@@ -12,7 +12,9 @@ from lib.supabase_client import cliente
 # O Supabase devolve no máximo 1000 linhas por consulta: a leitura vem em páginas desse tamanho.
 TAMANHO_PAGINA = 1000
 
-COLUNAS_FILA = "id, jira_key, empresa, reserva, status_ia, estado, sla_texto, situacao_sla, recebido_em, erro"
+COLUNAS_FILA = (
+    "id, jira_key, empresa, parceiro_id, reserva, status_ia, estado, sla_texto, situacao_sla, recebido_em, erro"
+)
 
 
 class UsuarioNaoIdentificado(PermissionError):

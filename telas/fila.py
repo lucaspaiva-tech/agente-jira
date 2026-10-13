@@ -1,34 +1,27 @@
 """Fila: tickets em andamento e resolvidos, numa tabela no estilo dos painéis atuais (shadcn/ui).
 
-Cada linha tem a chave do Jira como link pro Detalhe, etiquetas coloridas de status da IA, estado
-e SLA, e a tabela pagina de 10 em 10. Filtros, visão e página são lembrados ao voltar do Detalhe.
+Cada linha tem a chave do Jira como link pro Detalhe, a empresa como link pra planilha do parceiro,
+etiquetas coloridas de status da IA, estado e SLA, e a tabela pagina de 10 em 10. Filtros, visão e
+página são lembrados ao voltar do Detalhe. A tabela mora em lib/tabela.py (a Visão geral usa a mesma).
 """
 
 import streamlit as st
 
-from lib.dados import listar_fila
+from lib.dados import listar_fila, listar_parceiros
 from lib.dominio import (
-    COR_GRUPO,
     GRUPOS_EM_ANDAMENTO,
     ROTULO_GRUPO,
     contar_por_grupo,
-    cor_sla,
-    cor_status_ia,
     estados_dos_grupos,
     faixa_da_pagina,
     filtrar_fila,
-    formatar_data_hora,
-    grupo_fila,
+    links_planilha_por_parceiro,
     paginar,
-    texto_sla,
 )
+from lib.tabela import cabecalho, linha
 
 POR_PAGINA = 10
-# Colunas da tabela e a proporção de cada uma: as mesmas no cabeçalho (HTML) e nas linhas.
-COLUNAS = [("Chave Jira", 1.4), ("Empresa", 1.9), ("Status da IA", 1.8), ("Estado", 1.6), ("SLA", 1.8),
-           ("Recebido em", 1.6)]
-PROPORCOES = [proporcao for _, proporcao in COLUNAS]
-COR_ETIQUETA_SLA = {"sucesso": "green", "erro": "red", "aviso": "orange", "neutro": "gray"}
+COLUNAS = ["chave", "empresa", "status_ia", "estado", "sla", "recebido"]
 VISOES = ("andamento", "resolvidos")
 
 
@@ -43,41 +36,9 @@ def guardar(*chaves: str):
         st.session_state[f"_{chave}"] = st.session_state[chave]
 
 
-def cabecalho() -> str:
-    """Cabeçalho escuro (tinta, texto branco). HTML isolado, com o mesmo grid das linhas."""
-    grade = " ".join(f"{p}fr" for p in PROPORCOES)
-    titulos = "".join(f"<div>{nome}</div>" for nome, _ in COLUNAS)
-    return f"""
-    <div style="display:grid; grid-template-columns:{grade}; column-gap:1rem; align-items:center;
-                background:#454545; color:#ffffff; border-radius:0.5rem; padding:0.7rem 0.75rem;
-                font-family:Inter, sans-serif; font-size:0.8rem; font-weight:600;
-                letter-spacing:0.03em; text-transform:uppercase;">{titulos}</div>
-    """
-
-
-def etiqueta(cor: str, texto: str) -> str:
-    return f":{cor}-badge[{texto}]"
-
-
-def linha(ticket: dict):
-    chave, empresa, status, estado, sla, recebido = st.columns(PROPORCOES, vertical_alignment="center")
-    # A chave é o link: um clique abre o Detalhe (sem caixa de seleção).
-    if chave.button(ticket["jira_key"], key=f"abrir_{ticket['id']}", type="tertiary", icon=":material/open_in_new:"):
-        st.session_state["ticket_id"] = ticket["id"]
-        st.switch_page("telas/detalhe.py")
-    empresa.markdown(ticket.get("empresa") or "—")
-    status_ia = ticket.get("status_ia")
-    status.markdown(etiqueta(cor_status_ia(status_ia), status_ia) if status_ia else etiqueta("gray", "Sem decisão"))
-    grupo = grupo_fila(ticket)
-    alerta = ":material/warning: " if ticket.get("erro") else ""
-    estado.markdown(etiqueta(COR_GRUPO.get(grupo, "gray"), f"{alerta}{ROTULO_GRUPO.get(grupo, ticket['estado'])}"))
-    texto = texto_sla(ticket.get("situacao_sla"), ticket.get("sla_texto"))
-    sla.markdown(etiqueta(COR_ETIQUETA_SLA[cor_sla(ticket.get("situacao_sla"))], texto) if texto != "—" else "—")
-    recebido.caption(formatar_data_hora(ticket.get("recebido_em")))
-
-
 try:
     tickets = listar_fila()
+    links_planilha = links_planilha_por_parceiro(listar_parceiros())
 except Exception:
     st.title("Fila")
     st.error("Não consegui ler os tickets agora. Abra o Diagnóstico pra ver o que falhou.")
@@ -120,6 +81,9 @@ guardar("fila_visao", "fila_grupos", "fila_empresas", "fila_status", "fila_busca
 filtrados = filtrar_fila(tickets, estados, st.session_state["fila_empresas"], st.session_state["fila_status"],
                          st.session_state["fila_busca"])
 
+# A ordem dos tickets filtrados vai pro Detalhe: é por ela que andam o Anterior e o Próximo.
+st.session_state["_lista_detalhe"] = [t["id"] for t in filtrados]
+
 # Mudou visão ou filtro: volta pra página 1.
 assinatura = (visao, tuple(estados), tuple(st.session_state["fila_empresas"]),
               tuple(st.session_state["fila_status"]), st.session_state["fila_busca"])
@@ -131,11 +95,11 @@ st.session_state["_fila_pagina"] = pagina
 
 # Tabela ---------------------------------------------------------------------------------------
 with st.container(border=True):
-    st.html(cabecalho())
+    st.html(cabecalho(COLUNAS))
     if not itens:
         st.caption("Nenhum ticket com esses filtros.")
     for ticket in itens:
-        linha(ticket)
+        linha(ticket, COLUNAS, links_planilha)
 
     # Rodapé: faixa com total à esquerda, navegação à direita.
     faixa, anterior, posicao, proxima = st.columns([4, 1.3, 1.3, 1.3], vertical_alignment="center")

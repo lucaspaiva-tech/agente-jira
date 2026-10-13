@@ -36,9 +36,10 @@ branco por cima, e o #f11075 mede 4.14:1 de contraste (não passa AA), enquanto 
 Sucesso, erro e aviso saem das cores nativas do Streamlit (`st.success`, `st.error`,
 `st.warning`, etiquetas `:red-badge[...]`), já ajustadas pra paleta pelo tema.
 
-**HTML próprio só em blocos isolados:** o cartão em degradê rosa da Visão geral ("Precisa de você")
-e o cabeçalho escuro da tabela da Fila (`tinta` com texto branco). Nada que mexa no estilo interno
-do Streamlit. CSS global sobrescrevendo o Streamlit quebra a
+**HTML próprio só em blocos isolados:** o cartão em degradê rosa da Visão geral ("Precisa de você",
+só o número), o cabeçalho escuro da tabela de tickets (`tinta` com texto branco) e, no Detalhe, o indicador de
+etapas e o histórico vertical. Todo texto que entra nesses blocos passa por `html.escape` (a OBS e o
+parecer são texto livre). Nada que mexa no estilo interno do Streamlit. CSS global sobrescrevendo o Streamlit quebra a
 cada atualização: não use. Precisou de um visual que o tema não cobre? Bloco isolado com
 `st.html` e estilo só dentro dele.
 
@@ -114,4 +115,17 @@ sempre traz o texto (a cor nunca é o único sinal) e a cor é única dentro de 
 | Resolvido | gray | Sem decisão / desconhecido | gray |
 
 A fonte da verdade é `lib/dominio.py` (`COR_GRUPO`, `COR_STATUS_IA`).
+
+A mesma tabela (`lib/tabela.py`) aparece na Visão geral, com menos colunas. Na tabela, a chave
+abre o Detalhe e o nome da empresa é link pra planilha do parceiro (abre em nova aba); empresa sem
+parceiro ligado fica em texto puro.
+
+## Detalhe: contexto à esquerda, ação à direita
+
+Padrão das páginas de ticket (Zammad, Neowit): conteúdo no centro, coluna lateral de ação. Cada
+tipo de conteúdo tem seu formato, pra os cartões não parecerem todos iguais: parecer como citação,
+valores em cartões de número, viagem com o trecho em destaque e pares rótulo/valor, reembolso como
+lista de status com ícones, histórico em linha vertical (🤖 sistema, 👤 pessoa). O número da
+reserva fica em destaque ao lado do título, num cartão de número (é o que se busca no admin). Só a ação do
+"Próximo passo" fica em rosa; confirmações abrem em janela (`st.dialog`).
 

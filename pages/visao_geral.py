@@ -58,7 +58,7 @@ with principal:
         cartao_destaque(
             resumo["precisa_de_voce"],
             f"{resumo['pendentes']} pendentes · {resumo['sla_estourado']} com SLA estourado · "
-            f"{resumo['a_fechar']} a fechar · {resumo['falhas']} com falha",
+            f"{resumo['respondidos']} respondidos · {resumo['falhas']} com falha",
         )
     )
 
@@ -66,10 +66,10 @@ with principal:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Pendentes", resumo["pendentes"], icon=":material/pending_actions:", border=True)
     c2.metric("SLA estourado", resumo["sla_estourado"], icon=":material/alarm:", border=True)
-    c3.metric("A fechar", resumo["a_fechar"], icon=":material/task_alt:", border=True)
+    c3.metric("Respondidos", resumo["respondidos"], icon=":material/task_alt:", border=True)
     c4.metric("Com o parceiro", resumo["com_parceiro"], icon=":material/forward_to_inbox:", border=True)
     st.caption(
-        "A fechar: decididos, falta confirmar o reembolso ou resolver. "
+        "Respondidos: falta confirmar o reembolso ou resolver. "
         "SLA estourado: com o parceiro há mais de 48h sem resposta."
     )
 

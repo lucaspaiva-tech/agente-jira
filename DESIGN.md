@@ -36,8 +36,9 @@ branco por cima, e o #f11075 mede 4.14:1 de contraste (não passa AA), enquanto 
 Sucesso, erro e aviso saem das cores nativas do Streamlit (`st.success`, `st.error`,
 `st.warning`, etiquetas `:red-badge[...]`), já ajustadas pra paleta pelo tema.
 
-**HTML próprio só em dois lugares:** o cartão em degradê rosa da Visão geral ("Precisa de você")
-e nada que mexa no estilo interno do Streamlit. CSS global sobrescrevendo o Streamlit quebra a
+**HTML próprio só em blocos isolados:** o cartão em degradê rosa da Visão geral ("Precisa de você")
+e o cabeçalho escuro da tabela da Fila (`tinta` com texto branco). Nada que mexa no estilo interno
+do Streamlit. CSS global sobrescrevendo o Streamlit quebra a
 cada atualização: não use. Precisou de um visual que o tema não cobre? Bloco isolado com
 `st.html` e estilo só dentro dele.
 
@@ -95,3 +96,22 @@ Use o mesmo significado de cor em toda tela:
 - Hex solto no código. Se falta um tom, ele vem da fonte e entra aqui.
 - Emoji como única informação: sempre acompanha um texto.
 - Rosa como enfeite.
+
+## Cores de categoria na Fila
+
+A Fila usa etiquetas coloridas (`:cor-badge[texto]`) pra diferenciar estado e status da IA à
+primeira vista, como nas tabelas de painel atuais (referência: shadcn/ui Data Table). É a única
+exceção a "cor semântica só carrega significado": aqui a cor é legenda de categoria. A etiqueta
+sempre traz o texto (a cor nunca é o único sinal) e a cor é única dentro de cada coluna.
+
+| Estado (grupo) | Cor | Status da IA | Cor |
+|---|---|---|---|
+| Processando | blue | Aprovado Viação | green |
+| Pendente | orange | Alinhado | blue |
+| Com o parceiro (inclui enviando) | violet | Em Análise | gray |
+| Respondido (decidido) | green | Falta informação BX | violet |
+| Falha | red | Reprovado | red |
+| Resolvido | gray | Sem decisão / desconhecido | gray |
+
+A fonte da verdade é `lib/dominio.py` (`COR_GRUPO`, `COR_STATUS_IA`).
+

@@ -469,7 +469,7 @@ VISAO = [
 
 def test_resumo_da_fila_conta_cada_grupo():
     resumo = d.resumo_da_fila(VISAO)
-    assert resumo == {"precisa_de_voce": 5, "pendentes": 2, "sla_estourado": 1, "a_fechar": 1,
+    assert resumo == {"precisa_de_voce": 5, "pendentes": 2, "sla_estourado": 1, "respondidos": 1,
                       "falhas": 1, "com_parceiro": 3}
 
 
@@ -492,3 +492,77 @@ def test_resumo_de_fila_vazia():
 def test_empresas_sem_parceiro_com_quantos_tickets_cada_uma_trava():
     empresas = ["Nena", "Ponce", "Nena ", "Ligada", None, "Nena"]
     assert d.empresas_sem_parceiro_com_tickets(empresas, ["Ligada"]) == [("Nena", 3), ("Ponce", 1)]
+
+
+# ---------------------------------------------------------------- fila no estilo shadcn: grupos, cores e páginas
+def test_decidido_aparece_como_respondido():
+    assert d.rotulo_estado("decidido") == "Respondido"
+
+
+@pytest.mark.parametrize("estado, grupo", [
+    ("processando", "processando"), ("pendente", "pendente"), ("enviando", "com_parceiro"),
+    ("enviado_parceiro", "com_parceiro"), ("decidido", "respondido"), ("falha", "falha"),
+    ("resolvido", "resolvido"),
+])
+def test_cada_estado_cai_em_um_grupo_da_fila(estado, grupo):
+    assert d.grupo_fila({"estado": estado}) == grupo
+
+
+def test_grupos_da_fila_em_andamento_sao_os_cinco_pedidos():
+    assert [d.ROTULO_GRUPO[g] for g in d.GRUPOS_EM_ANDAMENTO] == [
+        "Processando", "Pendente", "Com o parceiro", "Respondido", "Falha"]
+
+
+def test_estados_dos_grupos_traduz_pro_filtro_que_ja_existe():
+    assert set(d.estados_dos_grupos(["com_parceiro", "falha"])) == {"enviando", "enviado_parceiro", "falha"}
+    # Enviando entra no filtro "Com o parceiro": não some da fila.
+    fila = [{"estado": "enviando"}, {"estado": "pendente"}]
+    assert d.filtrar_fila(fila, estados=d.estados_dos_grupos(["com_parceiro"])) == [{"estado": "enviando"}]
+
+
+def test_contar_por_grupo_junta_enviando_com_o_parceiro():
+    fila = [{"estado": "enviando"}, {"estado": "enviado_parceiro"}, {"estado": "decidido"}, {"estado": "resolvido"}]
+    contagem = d.contar_por_grupo(fila)
+    assert contagem["com_parceiro"] == 2
+    assert contagem["respondido"] == 1
+    assert contagem["resolvido"] == 1
+    assert contagem["pendente"] == 0
+
+
+def test_cada_grupo_tem_cor_propria():
+    cores = [d.COR_GRUPO[g] for g in d.GRUPOS_EM_ANDAMENTO]
+    assert len(set(cores)) == len(cores)
+
+
+def test_todo_status_conhecido_da_ia_tem_cor_propria():
+    from scripts.gerar_seed import STATUS_IA_CONHECIDOS
+    cores = [d.cor_status_ia(s) for s in STATUS_IA_CONHECIDOS]
+    assert len(set(cores)) == len(STATUS_IA_CONHECIDOS)
+
+
+def test_status_desconhecido_ou_vazio_fica_cinza():
+    assert d.cor_status_ia("Status Novo") == "gray"
+    assert d.cor_status_ia(None) == "gray"
+
+
+def test_paginar_de_10_em_10():
+    itens = list(range(23))
+    assert d.paginar(itens, 1) == (list(range(10)), 1, 3)
+    assert d.paginar(itens, 3) == ([20, 21, 22], 3, 3)
+
+
+def test_paginar_corrige_pagina_fora_da_faixa():
+    itens = list(range(23))
+    assert d.paginar(itens, 9)[1:] == (3, 3)   # filtro reduziu a lista: vai pra última
+    assert d.paginar(itens, 0)[1:] == (1, 3)
+
+
+def test_paginar_lista_vazia_tem_uma_pagina():
+    assert d.paginar([], 1) == ([], 1, 1)
+
+
+@pytest.mark.parametrize("pagina, total, esperado", [
+    (1, 49, "1–10 de 49"), (5, 49, "41–49 de 49"), (1, 7, "1–7 de 7"), (1, 0, "Nenhum ticket"),
+])
+def test_faixa_da_pagina(pagina, total, esperado):
+    assert d.faixa_da_pagina(pagina, 10, total) == esperado

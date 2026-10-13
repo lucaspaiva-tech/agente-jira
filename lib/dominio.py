@@ -73,7 +73,7 @@ ROTULO_ESTADO = {
     "pendente": "Pendente",
     "enviando": "Enviando",
     "enviado_parceiro": "Com o parceiro",
-    "decidido": "Decidido",
+    "decidido": "Respondido",
     "resolvido": "Resolvido",
 }
 
@@ -122,10 +122,88 @@ def resumo_da_fila(tickets) -> dict[str, int]:
         "precisa_de_voce": sum(precisa_de_voce(t) for t in tickets),
         "pendentes": estados.count("pendente"),
         "sla_estourado": sum(t.get("situacao_sla") == "estourado" for t in tickets),
-        "a_fechar": estados.count("decidido"),
+        "respondidos": estados.count("decidido"),
         "falhas": estados.count("falha"),
         "com_parceiro": estados.count("enviando") + estados.count("enviado_parceiro"),
     }
+
+
+# -----------------------------------------------------------------------------
+# Fila: grupos de estado, cores das etiquetas e paginação
+# -----------------------------------------------------------------------------
+# A Fila mostra 5 grupos em andamento; "enviando" (o n8n escrevendo na planilha, minutos) entra
+# em "Com o parceiro" pra não sumir se o envio travar. Resolvidos ficam num atalho à parte.
+ESTADOS_DO_GRUPO = {
+    "processando": ("processando",),
+    "pendente": ("pendente",),
+    "com_parceiro": ("enviando", "enviado_parceiro"),
+    "respondido": ("decidido",),
+    "falha": ("falha",),
+    "resolvido": ("resolvido",),
+}
+GRUPOS_EM_ANDAMENTO = ("processando", "pendente", "com_parceiro", "respondido", "falha")
+ROTULO_GRUPO = {
+    "processando": "Processando",
+    "pendente": "Pendente",
+    "com_parceiro": "Com o parceiro",
+    "respondido": "Respondido",
+    "falha": "Falha",
+    "resolvido": "Resolvido",
+}
+# Cor da etiqueta (nomes de cor do Streamlit). Única dentro da coluna; o texto vem sempre junto.
+COR_GRUPO = {
+    "processando": "blue",
+    "pendente": "orange",
+    "com_parceiro": "violet",
+    "respondido": "green",
+    "falha": "red",
+    "resolvido": "gray",
+}
+COR_STATUS_IA = {
+    "Aprovado Viação": "green",
+    "Alinhado": "blue",
+    "Em Análise": "gray",
+    "Falta informação BX": "violet",
+    "Reprovado": "red",
+}
+_GRUPO_DO_ESTADO = {estado: grupo for grupo, estados in ESTADOS_DO_GRUPO.items() for estado in estados}
+
+
+def grupo_fila(ticket) -> str | None:
+    return _GRUPO_DO_ESTADO.get(ticket.get("estado"))
+
+
+def estados_dos_grupos(grupos) -> list[str]:
+    """Grupos escolhidos na tela -> estados do banco, pro filtrar_fila."""
+    return [estado for grupo in grupos for estado in ESTADOS_DO_GRUPO[grupo]]
+
+
+def contar_por_grupo(tickets) -> dict[str, int]:
+    contagem = dict.fromkeys(ESTADOS_DO_GRUPO, 0)
+    for t in tickets:
+        if (grupo := grupo_fila(t)) is not None:
+            contagem[grupo] += 1
+    return contagem
+
+
+def cor_status_ia(status) -> str:
+    return COR_STATUS_IA.get(status, "gray")
+
+
+def paginar(itens, pagina: int, por_pagina: int = 10) -> tuple[list, int, int]:
+    """(itens da página, página válida, total de páginas). Página fora da faixa vai pra ponta."""
+    total_paginas = max(1, -(-len(itens) // por_pagina))
+    pagina = min(max(1, pagina), total_paginas)
+    inicio = (pagina - 1) * por_pagina
+    return list(itens[inicio : inicio + por_pagina]), pagina, total_paginas
+
+
+def faixa_da_pagina(pagina: int, por_pagina: int, total: int) -> str:
+    """'1–10 de 49': o total sempre aparece (tabela sem total é anti-padrão)."""
+    if total == 0:
+        return "Nenhum ticket"
+    inicio = (pagina - 1) * por_pagina + 1
+    return f"{inicio}–{min(pagina * por_pagina, total)} de {total}"
 
 
 def texto_sla(situacao_sla, sla_texto) -> str:

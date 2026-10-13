@@ -162,6 +162,46 @@ def acoes_disponiveis(ticket) -> list[str]:
     return [nome for nome, regra in ACOES.items() if regra(ticket)]
 
 
+def pode_editar_obs(ticket) -> bool:
+    """OBS: editável, menos enquanto o n8n processa o ticket."""
+    return ticket.get("estado") != "processando"
+
+
+def pode_mudar_acionar_operador(ticket) -> bool:
+    """Fora do processamento e do envio: em enviando e enviado_parceiro o banco exige
+    acionar_operador marcado (constraint tickets_envio_exige_operador_e_parceiro)."""
+    return ticket.get("estado") not in ("processando", "enviando", "enviado_parceiro")
+
+
+OPCOES_DECISAO = ("Sim", "Não")
+
+
+def validar_decisao(aprovado, motivo) -> str | None:
+    """None se a decisão manual pode ser gravada; senão, o que falta, em português."""
+    if aprovado not in OPCOES_DECISAO:
+        return "Escolha Sim ou Não."
+    if not (motivo or "").strip():
+        return "Escreva o motivo da decisão."
+    return None
+
+
+def mensagem_de_erro(erro) -> str:
+    """Erro ao gravar em linguagem simples. Nunca devolve o texto cru (pode ter URL ou chave)."""
+    if isinstance(erro, PermissionError):
+        return "Não consegui identificar quem você é, então nada foi gravado. Abra o app pelo Buser Hub."
+    texto = getattr(erro, "message", None) or ""
+    if "Transição de estado inválida" in texto:
+        return (
+            "Esse ticket mudou de situação (talvez o n8n tenha acabado de atualizar). "
+            "Nada foi gravado: recarregue a página e tente de novo."
+        )
+    if "tickets_envio_exige_operador_e_parceiro" in texto:
+        return 'Enquanto o ticket está com o parceiro, "acionar operador" precisa ficar marcado e o parceiro definido.'
+    if "Reembolso já confirmado" in texto:
+        return "O reembolso deste ticket já foi confirmado: a autorização de liderança não muda mais."
+    return "Não consegui gravar agora. Tente de novo; se continuar, abra o Diagnóstico."
+
+
 # -----------------------------------------------------------------------------
 # Multa
 # -----------------------------------------------------------------------------

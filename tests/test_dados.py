@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 import lib.dados as dados
@@ -193,3 +195,51 @@ def test_listar_eventos_do_mais_recente_pro_mais_antigo(leitura):
     assert ("order", "criado_em", True) in falso.chamadas
     # eventos do mesmo instante (um update que muda várias colunas) saem sempre na mesma ordem
     assert ("order", "id", True) in falso.chamadas
+
+
+# ---------------------------------------------------------------- ações (Tarefa 3)
+def gravado(cliente_falso):
+    return next(c[1] for c in cliente_falso.chamadas if c[0] == "update")
+
+
+@pytest.mark.parametrize(
+    "acao, argumentos, esperado",
+    [
+        (dados.enviar_ao_parceiro, (), {"estado": "enviando"}),
+        (dados.reverter_envio, (), {"estado": "pendente"}),
+        (dados.registrar_decisao, ("Não", "  Passageiro não embarcou. "),
+         {"aprovado": "Não", "motivo_parceiro": "Passageiro não embarcou.", "estado": "decidido"}),
+        (dados.corrigir_autorizacao, (True,), {"autorizado_lideranca": True}),
+        (dados.corrigir_autorizacao, (False,), {"autorizado_lideranca": False}),
+        (dados.resolver, (), {"estado": "resolvido"}),
+        (dados.reabrir, (), {"estado": "decidido"}),
+        (dados.editar_obs, ("  conferido com o parceiro ",), {"obs": "conferido com o parceiro"}),
+        (dados.editar_obs, ("   ",), {"obs": None}),
+        (dados.marcar_acionar_operador, (True,), {"acionar_operador": True}),
+    ],
+)
+def test_cada_acao_grava_so_o_que_e_dela(hub, cliente_falso, acao, argumentos, esperado):
+    # Payload exato: nenhuma ação grava data de estado (enviado_parceiro_em, decidido_em,
+    # resolvido_em): quem carimba é o banco.
+    hub(cabecalhos={"X-Hub-User-Email": "ana@buser.com.br"})
+    acao(13, *argumentos)
+    assert gravado(cliente_falso) == {**esperado, "atualizado_por": "ana@buser.com.br"}
+    assert ("eq", "id", 13) in cliente_falso.chamadas
+
+
+def test_confirmar_reembolso_grava_a_hora_atual_com_fuso(hub, cliente_falso):
+    hub(cabecalhos={"X-Hub-User-Email": "ana@buser.com.br"})
+    antes = datetime.now(UTC)
+    dados.confirmar_reembolso(13)
+    campos = gravado(cliente_falso)
+    assert set(campos) == {"reembolso_confirmado_em", "atualizado_por"}
+    momento = datetime.fromisoformat(campos["reembolso_confirmado_em"])
+    assert momento.tzinfo is not None
+    assert antes <= momento <= datetime.now(UTC)
+
+
+def test_acao_sem_usuario_nao_toca_no_banco(hub, cliente_falso):
+    hub()
+    with pytest.raises(UsuarioNaoIdentificado):
+        dados.enviar_ao_parceiro(13)
+    assert cliente_falso.chamadas == []

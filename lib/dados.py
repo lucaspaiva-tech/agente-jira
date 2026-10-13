@@ -4,6 +4,8 @@ As páginas chamam estas funções; nunca chamam cliente().table(...) direto.
 Assim a regra do atualizado_por (autor do histórico) fica num lugar só.
 """
 
+from datetime import UTC, datetime
+
 from lib.identidade import usuario_atual
 from lib.supabase_client import cliente
 
@@ -100,3 +102,51 @@ def atualizar_parceiro(parceiro_id: int, campos: dict) -> dict | None:
 
     resposta = cliente().table("parceiros").update(campos).eq("id", parceiro_id).execute()
     return resposta.data[0] if resposta.data else None
+
+
+# -----------------------------------------------------------------------------
+# Ações humanas no ticket. Quem pode fazer o quê: dominio.acoes_disponiveis.
+# Nenhuma grava data de estado (enviado_parceiro_em, decidido_em, resolvido_em):
+# o banco carimba. Transição inválida o banco recusa.
+# -----------------------------------------------------------------------------
+def enviar_ao_parceiro(ticket_id: int) -> dict | None:
+    """Pede o envio: o n8n escreve na planilha e muda pra enviado_parceiro."""
+    return atualizar_ticket(ticket_id, {"estado": "enviando"})
+
+
+def reverter_envio(ticket_id: int) -> dict | None:
+    """Volta pra pendente. A linha já copiada na planilha do parceiro não é removida."""
+    return atualizar_ticket(ticket_id, {"estado": "pendente"})
+
+
+def registrar_decisao(ticket_id: int, aprovado: str, motivo: str) -> dict | None:
+    """Decisão manual: 'Sim' ou 'Não' e o motivo. Validar antes com dominio.validar_decisao."""
+    campos = {"aprovado": aprovado, "motivo_parceiro": motivo.strip(), "estado": "decidido"}
+    return atualizar_ticket(ticket_id, campos)
+
+
+def corrigir_autorizacao(ticket_id: int, autorizado: bool) -> dict | None:
+    """Autorização de liderança (TL ou supervisão). Depois do reembolso confirmado o banco recusa."""
+    return atualizar_ticket(ticket_id, {"autorizado_lideranca": autorizado})
+
+
+def confirmar_reembolso(ticket_id: int) -> dict | None:
+    """Carimba a confirmação. O banco decide: custo BX ou multa do parceiro."""
+    return atualizar_ticket(ticket_id, {"reembolso_confirmado_em": datetime.now(UTC).isoformat()})
+
+
+def resolver(ticket_id: int) -> dict | None:
+    return atualizar_ticket(ticket_id, {"estado": "resolvido"})
+
+
+def reabrir(ticket_id: int) -> dict | None:
+    return atualizar_ticket(ticket_id, {"estado": "decidido"})
+
+
+def editar_obs(ticket_id: int, texto: str | None) -> dict | None:
+    """OBS em branco vira vazio de verdade (null), não um texto de espaços."""
+    return atualizar_ticket(ticket_id, {"obs": (texto or "").strip() or None})
+
+
+def marcar_acionar_operador(ticket_id: int, acionar: bool) -> dict | None:
+    return atualizar_ticket(ticket_id, {"acionar_operador": acionar})

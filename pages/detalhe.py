@@ -1,11 +1,27 @@
-"""Detalhe: tudo de um ticket, só leitura. Abre a partir da seleção na Fila."""
+"""Detalhe: tudo de um ticket e as ações humanas sobre ele. Abre a partir da seleção na Fila."""
 
 import streamlit as st
 
 from lib.config import ler_segredo
-from lib.dados import ler_decisao, ler_reserva, ler_ticket, listar_eventos
+from lib.dados import (
+    confirmar_reembolso,
+    corrigir_autorizacao,
+    editar_obs,
+    enviar_ao_parceiro,
+    ler_decisao,
+    ler_reserva,
+    ler_ticket,
+    listar_eventos,
+    marcar_acionar_operador,
+    reabrir,
+    registrar_decisao,
+    resolver,
+    reverter_envio,
+)
 from lib.dominio import (
+    OPCOES_DECISAO,
     TEXTO_SITUACAO_REEMBOLSO,
+    acoes_disponiveis,
     descrever_evento,
     descricao_destino_reembolso,
     descricao_multa,
@@ -13,7 +29,11 @@ from lib.dominio import (
     formatar_real,
     formatar_viagem,
     link_jira,
+    mensagem_de_erro,
+    pode_editar_obs,
+    pode_mudar_acionar_operador,
     situacao_reembolso,
+    validar_decisao,
 )
 
 # Cor do domínio -> caixa nativa do Streamlit (DESIGN.md: cor semântica só carrega significado).
@@ -76,6 +96,99 @@ else:
     st.caption("Link do Jira indisponível: falta o segredo JIRA_BASE_URL.")
 if ticket.get("erro"):
     st.error(f"Falha no processamento: {ticket['erro']}")
+
+
+
+def executar(acao, *argumentos, sucesso: str):
+    """Grava pela função de lib/dados.py. Deu certo: guarda o aviso e recarrega a tela."""
+    try:
+        resultado = acao(ticket["id"], *argumentos)
+    except Exception as erro:
+        st.error(mensagem_de_erro(erro))
+        return
+    if resultado is None:
+        st.error("Não encontrei este ticket pra gravar. Recarregue a página.")
+        return
+    # O aviso sobrevive ao st.rerun() porque fica no session_state; é mostrado e apagado em seguida.
+    st.session_state["aviso_acao"] = sucesso
+    st.rerun()
+
+
+if aviso := st.session_state.pop("aviso_acao", None):
+    st.success(aviso)
+
+acoes = acoes_disponiveis(ticket)
+destino_atual = descricao_destino_reembolso(ticket.get("destino_reembolso"))
+
+with st.container(border=True):
+    st.markdown("#### Ações")
+    if not acoes:
+        st.caption("Nenhuma ação de fluxo disponível neste estado.")
+
+    if "enviar_ao_parceiro" in acoes:
+        if st.button("📤 Enviar ao parceiro", type="primary"):
+            executar(enviar_ao_parceiro, sucesso="Envio pedido. O n8n vai escrever a linha na planilha do parceiro.")
+
+    if "reverter_envio" in acoes:
+        with st.popover("↩️ Reverter envio"):
+            st.warning(
+                "O ticket volta pra pendente e o SLA zera. A linha já copiada na planilha do parceiro "
+                "**não é removida**: se precisar, apague lá à mão."
+            )
+            if st.button("Confirmar reversão"):
+                executar(reverter_envio, sucesso="Envio revertido: o ticket voltou pra pendente.")
+
+    if "registrar_decisao" in acoes:
+        with st.form("decisao_manual"):
+            st.markdown("**Decisão manual**")
+            aprovado = st.radio("Podemos reembolsar?", OPCOES_DECISAO, index=None, horizontal=True)
+            motivo = st.text_input("Motivo")
+            if st.form_submit_button("Registrar decisão"):
+                if problema := validar_decisao(aprovado, motivo):
+                    st.warning(problema)
+                else:
+                    executar(registrar_decisao, aprovado, motivo, sucesso="Decisão registrada.")
+
+    if "corrigir_autorizacao" in acoes:
+        autorizado = bool(ticket.get("autorizado_lideranca"))
+        # Só aparece nos status que admitem custo BX (pede_autorizacao): aí a autorização
+        # é o que separa custo BX de multa do parceiro. Quem aplica a regra é o banco.
+        destino_se_mudar = descricao_destino_reembolso("multa_parceiro" if autorizado else "custo_bx")
+        st.markdown(f"**Autorização de liderança (TL ou supervisão):** {'sim' if autorizado else 'não'}")
+        st.caption(f"Hoje o reembolso vai para: {destino_atual}. Se mudar, vai para: {destino_se_mudar}.")
+        rotulo = "Desmarcar autorização de liderança" if autorizado else "Marcar autorização de liderança"
+        if st.button(rotulo):
+            executar(corrigir_autorizacao, not autorizado, sucesso="Autorização de liderança corrigida.")
+
+    if "confirmar_reembolso" in acoes:
+        with st.popover("💸 Confirmar reembolso"):
+            st.markdown(f"O reembolso vai para: **{destino_atual}**.")
+            if ticket.get("pede_autorizacao"):
+                st.caption("Depois de confirmar, a autorização de liderança não pode mais ser mudada.")
+            if st.button("Confirmar"):
+                executar(confirmar_reembolso, sucesso="Reembolso confirmado.")
+
+    if "resolver" in acoes:
+        if st.button("✅ Resolver"):
+            executar(resolver, sucesso="Ticket resolvido.")
+
+    if "reabrir" in acoes:
+        if st.button("🔄 Reabrir"):
+            executar(reabrir, sucesso="Ticket reaberto.")
+
+    if pode_mudar_acionar_operador(ticket):
+        st.divider()
+        acionar = bool(ticket.get("acionar_operador"))
+        st.markdown(f"**Acionar operador:** {'sim' if acionar else 'não'}")
+        if st.button("Desmarcar acionar operador" if acionar else "Marcar acionar operador"):
+            executar(marcar_acionar_operador, not acionar, sucesso="Acionar operador atualizado.")
+
+    if pode_editar_obs(ticket):
+        st.divider()
+        with st.form("obs"):
+            obs = st.text_area("OBS", value=ticket.get("obs") or "")
+            if st.form_submit_button("Salvar OBS"):
+                executar(editar_obs, obs, sucesso="OBS salva.")
 
 viagem, passageiro = st.columns(2)
 

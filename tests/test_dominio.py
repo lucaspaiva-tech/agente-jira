@@ -305,3 +305,66 @@ def test_texto_do_reembolso_confirmado():
 
 def test_evento_de_nova_decisao_nao_mostra_o_id_interno():
     assert d.descrever_evento({"campo": "decisao_id", "de": None, "para": "311"}) == "Nova decisão da IA"
+
+
+# ---------------------------------------------------------------- ações: validação e mensagem de erro
+class ErroDoBanco(Exception):
+    """Imita o APIError do supabase-py: a mensagem do raise exception vem em .message."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def test_transicao_recusada_vira_mensagem_simples():
+    erro = ErroDoBanco("Transição de estado inválida: pendente -> resolvido (ticket TESTE-1)")
+    texto = d.mensagem_de_erro(erro)
+    assert "mudou de situação" in texto
+    assert "->" not in texto
+
+
+def test_autorizacao_depois_do_reembolso_vira_mensagem_simples():
+    erro = ErroDoBanco("Reembolso já confirmado (ticket TESTE-13): a autorização de liderança não pode mais mudar.")
+    assert "já foi confirmado" in d.mensagem_de_erro(erro)
+
+
+def test_usuario_nao_identificado_pede_pra_abrir_pelo_hub():
+    assert "Buser Hub" in d.mensagem_de_erro(PermissionError("sem e-mail"))
+
+
+def test_erro_desconhecido_nao_mostra_o_texto_cru():
+    texto = d.mensagem_de_erro(ConnectionError("https://xyz.supabase.co recusou a chave eyJhbGci"))
+    assert "Diagnóstico" in texto
+    assert "supabase.co" not in texto and "eyJ" not in texto
+
+
+@pytest.mark.parametrize("aprovado, motivo", [("Sim", "Ok"), ("Não", "Passageiro não embarcou")])
+def test_decisao_valida(aprovado, motivo):
+    assert d.validar_decisao(aprovado, motivo) is None
+
+
+@pytest.mark.parametrize("aprovado, motivo", [("Sim", "   "), ("Sim", None), ("Talvez", "x"), (None, "x")])
+def test_decisao_invalida_explica_o_que_falta(aprovado, motivo):
+    assert d.validar_decisao(aprovado, motivo)
+
+
+@pytest.mark.parametrize("estado, pode", [("processando", False), ("falha", True), ("pendente", True),
+                                          ("enviando", True), ("decidido", True), ("resolvido", True)])
+def test_obs_so_nao_muda_enquanto_o_n8n_processa(estado, pode):
+    assert d.pode_editar_obs({"estado": estado}) is pode
+
+
+@pytest.mark.parametrize("estado, pode", [("processando", False), ("enviando", False), ("enviado_parceiro", False),
+                                          ("falha", True), ("pendente", True), ("decidido", True), ("resolvido", True)])
+def test_acionar_operador_fica_travado_durante_o_envio(estado, pode):
+    # O banco exige acionar_operador marcado em enviando e enviado_parceiro
+    # (constraint tickets_envio_exige_operador_e_parceiro): a tela nem oferece.
+    assert d.pode_mudar_acionar_operador({"estado": estado}) is pode
+
+
+def test_envio_sem_operador_recusado_pelo_banco_vira_mensagem_simples():
+    erro = ErroDoBanco('new row for relation "tickets" violates check constraint '
+                       '"tickets_envio_exige_operador_e_parceiro" Failing row contains (314, TESTE-1, ...)')
+    texto = d.mensagem_de_erro(erro)
+    assert "acionar operador" in texto
+    assert "Failing row" not in texto

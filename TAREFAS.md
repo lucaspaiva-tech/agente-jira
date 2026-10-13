@@ -30,7 +30,7 @@ Antes de qualquer tarefa: `scripts/verificar.sh` verde e o Diagnóstico com os t
 ## Tarefa 1: Fila
 
 **Pedido:**
-> Leia o CLAUDE.md. Crie `pages/fila.py` (título "Fila") e registre na lista `PAGINAS_COM_DADOS` do
+> Leia o CLAUDE.md. Crie `telas/fila.py` (título "Fila") e registre na lista `PAGINAS_COM_DADOS` do
 > `app.py` (primeira da lista). Lista os tickets da view `v_fila` em tabela: chave Jira, empresa,
 > reserva, status da IA, estado, SLA (`sla_texto`, colorido por `situacao_sla` usando
 > `dominio.cor_sla`) e recebido em (`dominio.formatar_data_hora`). Filtros no topo: estado
@@ -49,7 +49,7 @@ TESTE-3 (no prazo) e TESTE-4 (estourado); buscar "TST005" acha só o TESTE-5; TE
 ## Tarefa 2: Detalhe (só leitura)
 
 **Pedido:**
-> Crie `pages/detalhe.py` (título "Detalhe", registrada em `PAGINAS_COM_DADOS`), aberta a partir da
+> Crie `telas/detalhe.py` (título "Detalhe", registrada em `PAGINAS_COM_DADOS`), aberta a partir da
 > seleção na Fila. Mostrar: viagem, passageiro e valores (de `reservas_oficiais`, com
 > `dominio.formatar_real`), decisão da IA em vigor (de `decisoes_ia` via `tickets.decisao_id`:
 > status, resumo, parecer, versão do prompt), resposta do parceiro, OBS, situação do reembolso
@@ -90,7 +90,7 @@ como custo BX e a autorização não pode mais ser mudada; a linha do tempo most
 ## Tarefa 4: Parceiros
 
 **Pedido:**
-> Crie `pages/parceiros.py` (título "Parceiros", registrada em `PAGINAS_COM_DADOS`). Três blocos:
+> Crie `telas/parceiros.py` (título "Parceiros", registrada em `PAGINAS_COM_DADOS`). Três blocos:
 > 1. **Avisos pendentes:** parceiros com `contato_pendente = true`, com o botão de
 >    `dominio.link_contato(whatsapp, email, planilha_id)` e "Já enviei" (grava `contato_pendente = false`).
 > 2. **Lista:** nome, nomes de empresa (`parceiro_nomes`), WhatsApp, e-mail e link da planilha
@@ -110,7 +110,7 @@ parceiro some da lista e liga o ticket; adicionar um nome já existente é recus
 
 **Pedido:**
 > Crie `scripts/empacotar_hub.py`, que gera `dist/agente-jira-hub.zip` com `app.py`,
-> `requirements.txt`, `pages/`, `lib/` e `.streamlit/config.toml` (o tema, sem segredo), sem
+> `requirements.txt`, `telas/`, `lib/` e `.streamlit/config.toml` (o tema, sem segredo), sem
 > `__pycache__`. Deve abortar com erro se qualquer `secrets.toml`, `.sql`, `.xlsx` ou `.csv` for
 > entrar no ZIP, e listar no fim o que foi incluído. Com teste.
 

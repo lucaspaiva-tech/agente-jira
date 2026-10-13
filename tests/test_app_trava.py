@@ -19,13 +19,13 @@ def app_com_pagina_de_dados(tmp_path):
     shutil.copytree(
         RAIZ, destino, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__", "tests")
     )
-    (destino / "pages" / "dados_falsos.py").write_text(
+    (destino / "telas" / "dados_falsos.py").write_text(
         f'import streamlit as st\nst.write("{TEXTO_DOS_DADOS}")\n', encoding="utf-8"
     )
     app = (destino / "app.py").read_text(encoding="utf-8")
     assert INICIO_DA_LISTA in app, "a declaração de PAGINAS_COM_DADOS mudou"
     # Entra em primeiro na primeira seção: é a página que abre por padrão.
-    app = app.replace(INICIO_DA_LISTA, INICIO_DA_LISTA + '        st.Page("pages/dados_falsos.py", title="Dados"),\n')
+    app = app.replace(INICIO_DA_LISTA, INICIO_DA_LISTA + '        st.Page("telas/dados_falsos.py", title="Dados"),\n')
     (destino / "app.py").write_text(app, encoding="utf-8")
     return destino / "app.py"
 
@@ -70,3 +70,10 @@ def test_no_modo_local_sem_cabecalho_a_pagina_abre(app_com_pagina_de_dados, monk
     segredos = {"AMBIENTE": "local", "USUARIO_LOCAL_EMAIL": "lucas.paiva@buser.com.br"}
     at = rodar(app_com_pagina_de_dados, monkeypatch, {}, segredos)
     assert abriu_os_dados(at)
+
+
+def test_nao_existe_pasta_pages_na_raiz():
+    # Uma pasta "pages/" faz o Streamlit rodar no modo antigo logo depois de subir: ele executa
+    # cada arquivo dela direto, sem passar pelo app.py e sem a trava de identidade, até alguém
+    # abrir "/". As telas moram em telas/ e só rodam pelo st.navigation.
+    assert not (RAIZ / "pages").exists(), "não crie pages/ na raiz: as telas ficam em telas/"

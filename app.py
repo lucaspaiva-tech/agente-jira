@@ -12,17 +12,17 @@ st.set_page_config(page_title="Agente JIRA", page_icon="🎫", layout="wide")
 # abaixo. A primeira página da primeira seção é a que abre por padrão.
 PAGINAS_COM_DADOS: dict[str, list] = {
     "Tratamento": [
-        st.Page("pages/visao_geral.py", title="Visão geral", icon=":material/dashboard:"),
-        st.Page("pages/fila.py", title="Fila", icon=":material/view_list:"),
-        st.Page("pages/detalhe.py", title="Detalhe", icon=":material/description:"),
+        st.Page("telas/visao_geral.py", title="Visão geral", icon=":material/dashboard:"),
+        st.Page("telas/fila.py", title="Fila", icon=":material/view_list:"),
+        st.Page("telas/detalhe.py", title="Detalhe", icon=":material/description:"),
     ],
     "Cadastro": [
-        st.Page("pages/parceiros.py", title="Parceiros", icon=":material/handshake:"),
+        st.Page("telas/parceiros.py", title="Parceiros", icon=":material/handshake:"),
     ],
 }
 
 # O Diagnóstico não exibe dado de passageiro: fica sempre disponível.
-SISTEMA = {"Sistema": [st.Page("pages/diagnostico.py", title="Diagnóstico", icon=":material/settings_ethernet:")]}
+SISTEMA = {"Sistema": [st.Page("telas/diagnostico.py", title="Diagnóstico", icon=":material/settings_ethernet:")]}
 
 st.logo("assets/logo.svg", size="large")
 

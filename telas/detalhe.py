@@ -63,7 +63,7 @@ def ou_traco(valor) -> str:
 
 def ir_pra_fila():
     if st.button("📋 Ir pra Fila"):
-        st.switch_page("pages/fila.py")
+        st.switch_page("telas/fila.py")
 
 
 ticket_id = st.session_state.get("ticket_id")

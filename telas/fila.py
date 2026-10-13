@@ -64,7 +64,7 @@ def linha(ticket: dict):
     # A chave é o link: um clique abre o Detalhe (sem caixa de seleção).
     if chave.button(ticket["jira_key"], key=f"abrir_{ticket['id']}", type="tertiary", icon=":material/open_in_new:"):
         st.session_state["ticket_id"] = ticket["id"]
-        st.switch_page("pages/detalhe.py")
+        st.switch_page("telas/detalhe.py")
     empresa.markdown(ticket.get("empresa") or "—")
     status_ia = ticket.get("status_ia")
     status.markdown(etiqueta(cor_status_ia(status_ia), status_ia) if status_ia else etiqueta("gray", "Sem decisão"))

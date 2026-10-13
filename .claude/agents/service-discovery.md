@@ -41,7 +41,7 @@ Se a função existente não serve, justifique no PR **antes** de duplicar.
 Nenhum candidato encontrado para "tickets com SLA estourado".
 
 Termos buscados: sla, prazo, estourado, atraso, horas.
-Locais inspecionados: lib/, pages/, supabase/migrations/.
+Locais inspecionados: lib/, telas/, supabase/migrations/.
 
 Pode criar. Antes, confere a view `v_fila` no banco (tem `situacao_sla`): provavelmente já responde.
 Sugestão de naming: `tickets_com_sla_estourado` em `lib/dados.py`, seguindo o padrão de `contar`.
@@ -56,6 +56,6 @@ Sugestão de naming: `tickets_com_sla_estourado` em `lib/dados.py`, seguindo o p
 
 ## Notas deste projeto
 
-- **Onde buscar:** `lib/` (toda lógica reusável mora aqui), `pages/` (telas), `supabase/migrations/` (views e regras que já existem no banco). A tabela do `CLAUDE.md` da raiz diz o que cada arquivo de `lib/` faz, e é a primeira parada. Confirma no arquivo antes de reportar: a tabela é índice, o arquivo é a verdade.
+- **Onde buscar:** `lib/` (toda lógica reusável mora aqui), `telas/` (telas), `supabase/migrations/` (views e regras que já existem no banco). A tabela do `CLAUDE.md` da raiz diz o que cada arquivo de `lib/` faz, e é a primeira parada. Confirma no arquivo antes de reportar: a tabela é índice, o arquivo é a verdade.
 - **Naming é pt-BR e `snake_case`** pra função e variável, `PascalCase` pra classe. Nome de arquivo é `snake_case` em pt-BR. Busca por termo em português primeiro (`segredo`, `identidade`, `dados`, `ticket`, `parceiro`), inglês só no que não é nosso.
 - **O candidato mais provável é uma das libs.** Antes de dizer "não existe", confere: `ler_segredo`, `ambiente`, `cliente`, `usuario_atual`, `contar`, `atualizar_ticket`, `atualizar_parceiro`, `UsuarioNaoIdentificado`.

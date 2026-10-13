@@ -1,6 +1,6 @@
 ---
 description: Padrão pra construir tela e lógica nova neste projeto (Python + Streamlit). Quem pede a mudança é pessoa de negócio
-paths: ["app.py", "pages/**", "lib/**", "tests/**"]
+paths: ["app.py", "telas/**", "lib/**", "tests/**"]
 ---
 
 # Python + Streamlit neste projeto
@@ -13,7 +13,7 @@ Quem pede a mudança é pessoa de negócio. Ela não lê código, lê mensagem d
   Toda escrita em `tickets` preenche `atualizado_por` com o e-mail do usuário: é isso que o
   trigger do banco usa pra montar o histórico. Sem usuário identificado, a escrita é bloqueada.
 - **Regra de negócio da página mora em `lib/dominio.py`**, função pura com teste. A tela só chama:
-  nada de `if` de regra espalhado em `pages/`.
+  nada de `if` de regra espalhado em `telas/`.
 - **Reusar o que existe.** O `CLAUDE.md` da raiz diz o que cada arquivo de `lib/` faz, e
   `ls lib/` confirma. Antes de escrever função nova pra ler config, conectar, identificar usuário
   ou gravar, leia o que já existe.
@@ -29,7 +29,7 @@ Quem pede a mudança é pessoa de negócio. Ela não lê código, lê mensagem d
 
 ## Tela nova
 
-Copia o padrão de `pages/diagnostico.py`: um arquivo por tela em `pages/`, título com `st.title`,
+Copia o padrão de `telas/diagnostico.py`: um arquivo por tela em `telas/`, título com `st.title`,
 dados lidos por funções de `lib/dados.py`, erro mostrado com `st.error` em linguagem simples.
 Registra a página na lista `PAGINAS_COM_DADOS` do `app.py`. Depois de gravar algo, `st.rerun()`.
 Passo a passo: `Skill(nova-tela)`.

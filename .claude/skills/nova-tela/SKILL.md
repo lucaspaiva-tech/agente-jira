@@ -8,7 +8,7 @@ description: Use quando precisar adicionar uma página nova no app (Streamlit). 
 Antes de começar: `.claude/rules/python-streamlit.md` e `.claude/rules/seguranca-hub.md`.
 Visual: `DESIGN.md` (o rosa é ação, não decoração).
 
-## 1. Criar `pages/<nome>.py`
+## 1. Criar `telas/<nome>.py`
 
 Um arquivo por tela, em pt-BR. Padrão mínimo:
 
@@ -41,7 +41,7 @@ No `app.py`, dentro de uma seção de `PAGINAS_COM_DADOS` (nunca direto em `pagi
 ```python
 PAGINAS_COM_DADOS: dict[str, list] = {
     "Tratamento": [
-        st.Page("pages/fila.py", title="Fila", icon=":material/view_list:"),
+        st.Page("telas/fila.py", title="Fila", icon=":material/view_list:"),
     ],
 }
 ```

@@ -14,7 +14,7 @@ Buser 2026, construído sobre o template do desafio.
 ```
 app.py                      entrada: menu e trava de identidade
 lib/                        configuração, conexão, identidade, acesso ao banco e regras (dominio.py)
-pages/                      uma tela por arquivo
+telas/                      uma tela por arquivo
 supabase/migrations/        schema do banco (001)
 supabase/seed/              dados de importação e de teste
 supabase/tests/             testes do banco (SQL, em rollback)

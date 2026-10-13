@@ -17,7 +17,7 @@ from lib.dominio import (
 
 # Clique numa linha da tabela de urgentes: abre o Detalhe antes de ler o banco de novo.
 if st.session_state.pop("abrir_detalhe", False):
-    st.switch_page("pages/detalhe.py")
+    st.switch_page("telas/detalhe.py")
 
 try:
     tickets = listar_fila()
@@ -108,7 +108,7 @@ with principal:
                 key="tabela_urgentes",
             )
             if st.button("Ver a fila completa", type="tertiary", icon=":material/arrow_forward:"):
-                st.switch_page("pages/fila.py")
+                st.switch_page("telas/fila.py")
 
 with lateral:
     pendentes = [p for p in parceiros if p.get("contato_pendente")]
@@ -122,7 +122,7 @@ with lateral:
             st.caption("Nenhum aviso pendente.")
         if st.button("Abrir Parceiros", key="ir_avisos", type="primary" if pendentes else "secondary",
                      icon=":material/campaign:", width="stretch"):
-            st.switch_page("pages/parceiros.py")
+            st.switch_page("telas/parceiros.py")
 
     sem_parceiro = empresas_sem_parceiro_com_tickets(
         [t.get("empresa") for t in tickets], [n for p in parceiros for n in p["nomes"]]
@@ -137,4 +137,4 @@ with lateral:
         else:
             st.caption("Toda empresa já tem parceiro.")
         if st.button("Ligar a um parceiro", key="ir_empresas", icon=":material/link:", width="stretch"):
-            st.switch_page("pages/parceiros.py")
+            st.switch_page("telas/parceiros.py")

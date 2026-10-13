@@ -59,7 +59,7 @@ Dois formatos:
       def test_devolve_lista_vazia_quando_todo_ticket_esta_no_prazo():
           assert tickets_com_sla_estourado(48) == []
 
-🔴 pages/fila.py:8 — `def filtrar_por_estado(tickets, estados)` (função nova, pública)
+🔴 telas/fila.py:8 — `def filtrar_por_estado(tickets, estados)` (função nova, pública)
     slot: tests/test_fila.py
     happy path + lista de estados vazia + ticket sem estado.
 

@@ -1,6 +1,6 @@
 ---
 description: Regras de identidade, segredos, rede e acesso do app dentro do Buser Hub
-paths: ["app.py", "pages/**", "lib/**", ".streamlit/**", "scripts/empacotar_hub.py"]
+paths: ["app.py", "telas/**", "lib/**", ".streamlit/**", "scripts/empacotar_hub.py"]
 ---
 
 # Segurança no Buser Hub
@@ -14,6 +14,10 @@ mostra a causa e esta rule é corrigida.
   externo `/s/...` e quando o app roda fora do Hub.
 - **Telas com dados entram em `PAGINAS_COM_DADOS` no `app.py`**, nunca direto na lista final. É
   essa lista que a trava de identidade protege: no Hub, sem e-mail, só o Diagnóstico abre.
+- **Nunca crie uma pasta `pages/` na raiz.** Com ela, logo depois de o servidor subir, o Streamlit
+  roda no modo antigo e executa cada arquivo de `pages/` direto pela URL (`/fila`), sem passar pelo
+  `app.py` e sem a trava, até alguém abrir `/`. As telas moram em `telas/`. Um teste em
+  `tests/test_app_trava.py` falha se `pages/` voltar.
 - **Segredos só via `st.secrets`.** No Hub não viram variável de ambiente. Nunca em código, nunca
   no ZIP, nunca no Git.
 - **`AMBIENTE=local` nunca vai pro Hub.** Ele aceita um e-mail fixo e faria toda ação ficar no

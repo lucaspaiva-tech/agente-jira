@@ -13,7 +13,7 @@ from lib.dominio import (
     validar_contato,
 )
 
-st.title("🤝 Parceiros")
+st.title("Parceiros")
 
 try:
     parceiros = listar_parceiros()
@@ -69,8 +69,9 @@ tabela = pd.DataFrame(
         "id": [p["id"] for p in parceiros],
         "nome": [p["nome"] for p in parceiros],
         "nomes": [", ".join(p["nomes"]) for p in parceiros],
-        "whatsapp": [p.get("whatsapp") for p in parceiros],
-        "email": [p.get("email") for p in parceiros],
+        # Sem contato fica em branco (não "None"); vazio e None contam igual ao comparar.
+        "whatsapp": [p.get("whatsapp") or "" for p in parceiros],
+        "email": [p.get("email") or "" for p in parceiros],
         "planilha": [link_planilha(p["planilha_id"]) for p in parceiros],
     }
 )
@@ -129,7 +130,9 @@ with st.form("adicionar_nome"):
         placeholder="Escolha da lista ou digite outro nome",
         accept_new_options=True,
     )
-    escolhido = st.selectbox("Parceiro", parceiros, index=None, format_func=lambda p: p["nome"])
+    escolhido = st.selectbox(
+        "Parceiro", parceiros, index=None, format_func=lambda p: p["nome"], placeholder="Escolha o parceiro"
+    )
     if st.form_submit_button("Adicionar"):
         if not (nome or "").strip() or escolhido is None:
             st.warning("Escolha o nome da empresa e o parceiro.")

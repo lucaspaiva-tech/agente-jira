@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="40" viewBox="0 0 220 40">
+  <rect x="0" y="2" width="36" height="36" rx="9" fill="#e6006a"/>
+  <path d="M10 14h16v4a3 3 0 0 0 0 6v4H10v-4a3 3 0 0 0 0-6z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <text x="46" y="19" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="#454545">Agente JIRA</text>
+  <text x="46" y="34" font-family="Inter, sans-serif" font-size="11" fill="#757575">Comercial · Marketplace</text>
+</svg>

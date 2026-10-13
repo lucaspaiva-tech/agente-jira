@@ -256,12 +256,12 @@ def test_link_jira_sem_base_ou_sem_chave_nao_monta_link():
 
 
 def test_evento_de_criacao():
-    assert d.descrever_evento({"campo": "criado", "de": None, "para": "pendente"}) == "Ticket criado em pendente"
+    assert d.descrever_evento({"campo": "criado", "de": None, "para": "pendente"}) == "Ticket criado em Pendente"
 
 
 def test_evento_de_mudanca_usa_o_nome_do_campo_em_portugues():
-    evento = {"campo": "estado", "de": "pendente", "para": "enviando"}
-    assert d.descrever_evento(evento) == "Estado: pendente → enviando"
+    evento = {"campo": "estado", "de": "enviado_parceiro", "para": "enviando"}
+    assert d.descrever_evento(evento) == "Estado: Com o parceiro → Enviando"
 
 
 def test_evento_com_lado_vazio_mostra_traco():
@@ -408,3 +408,87 @@ def test_nome_ja_usado_recusado_pelo_banco_vira_mensagem_simples():
     texto = d.mensagem_de_erro(erro)
     assert "já está ligado a um parceiro" in texto
     assert "duplicate" not in texto
+
+
+# ---------------------------------------------------------------- rodada 1 de UX: rótulos, SLA e ação principal
+def test_todo_estado_tem_rotulo_em_portugues():
+    for estado in d.ESTADOS:
+        assert "_" not in d.rotulo_estado(estado)
+    assert d.rotulo_estado("enviado_parceiro") == "Com o parceiro"
+
+
+def test_estado_desconhecido_aparece_como_veio():
+    assert d.rotulo_estado("novo_estado") == "novo_estado"
+
+
+def test_estado_na_fila_sinaliza_ticket_com_erro():
+    assert d.rotulo_estado_fila({"estado": "falha", "erro": "Databricks fora"}) == "⚠️ Falha"
+    assert d.rotulo_estado_fila({"estado": "pendente", "erro": None}) == "Pendente"
+
+
+@pytest.mark.parametrize("situacao, texto, esperado", [
+    ("estourado", "2d 12h", "🔴 Estourado · 2d 12h"),
+    ("no_prazo", "10h", "🟢 No prazo · 10h"),
+    ("respondido", "1d 2h", "Respondido em 1d 2h"),
+    ("nao_enviado", None, "—"),
+    (None, None, "—"),
+])
+def test_sla_diz_a_situacao_em_palavras_e_nao_so_na_cor(situacao, texto, esperado):
+    assert d.texto_sla(situacao, texto) == esperado
+
+
+@pytest.mark.parametrize("acoes, principal", [
+    (["enviar_ao_parceiro", "registrar_decisao"], "enviar_ao_parceiro"),
+    (["reverter_envio", "registrar_decisao"], "registrar_decisao"),
+    (["corrigir_autorizacao", "confirmar_reembolso", "resolver"], "confirmar_reembolso"),
+    (["resolver"], "resolver"),
+    (["reabrir"], None),  # reabrir é correção, não o próximo passo do fluxo
+    ([], None),
+])
+def test_acao_principal_e_o_proximo_passo_do_fluxo(acoes, principal):
+    assert d.acao_principal(acoes) == principal
+
+
+# ---------------------------------------------------------------- visão geral
+def tk(chave, estado, situacao_sla="nao_enviado", recebido="2026-10-01T10:00:00+00:00"):
+    return {"jira_key": chave, "estado": estado, "situacao_sla": situacao_sla, "recebido_em": recebido}
+
+
+VISAO = [
+    tk("P-NOVO", "pendente", recebido="2026-10-09T10:00:00+00:00"),
+    tk("P-VELHO", "pendente", recebido="2026-10-02T10:00:00+00:00"),
+    tk("ESTOURADO", "enviado_parceiro", "estourado"),
+    tk("NO-PRAZO", "enviado_parceiro", "no_prazo"),
+    tk("ENVIANDO", "enviando"),
+    tk("FALHA", "falha"),
+    tk("DECIDIDO", "decidido", "respondido"),
+    tk("RESOLVIDO", "resolvido", "respondido"),
+    tk("PROCESSANDO", "processando"),
+]
+
+
+def test_resumo_da_fila_conta_cada_grupo():
+    resumo = d.resumo_da_fila(VISAO)
+    assert resumo == {"precisa_de_voce": 5, "pendentes": 2, "sla_estourado": 1, "a_fechar": 1,
+                      "falhas": 1, "com_parceiro": 3}
+
+
+def test_precisa_de_voce_nao_conta_o_que_espera_outro():
+    # Com o parceiro no prazo, enviando (n8n), processando (IA) e resolvido não pedem ação agora.
+    for chave in ("NO-PRAZO", "ENVIANDO", "PROCESSANDO", "RESOLVIDO"):
+        assert not d.precisa_de_voce(next(t for t in VISAO if t["jira_key"] == chave))
+
+
+def test_fila_de_urgencia_poe_estourado_e_falha_na_frente_e_o_mais_antigo_primeiro():
+    assert [t["jira_key"] for t in d.fila_de_urgencia(VISAO)] == [
+        "ESTOURADO", "FALHA", "P-VELHO", "P-NOVO", "DECIDIDO"]
+
+
+def test_resumo_de_fila_vazia():
+    assert d.resumo_da_fila([])["precisa_de_voce"] == 0
+    assert d.fila_de_urgencia([]) == []
+
+
+def test_empresas_sem_parceiro_com_quantos_tickets_cada_uma_trava():
+    empresas = ["Nena", "Ponce", "Nena ", "Ligada", None, "Nena"]
+    assert d.empresas_sem_parceiro_com_tickets(empresas, ["Ligada"]) == [("Nena", 3), ("Ponce", 1)]

@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 RAIZ = __import__("pathlib").Path(__file__).resolve().parent.parent
-INICIO_DA_LISTA = "PAGINAS_COM_DADOS: list = [\n"
+INICIO_DA_LISTA = 'PAGINAS_COM_DADOS: dict[str, list] = {\n    "Tratamento": [\n'
 TEXTO_DOS_DADOS = "DADOS DE PASSAGEIRO"
 
 
@@ -24,8 +24,8 @@ def app_com_pagina_de_dados(tmp_path):
     )
     app = (destino / "app.py").read_text(encoding="utf-8")
     assert INICIO_DA_LISTA in app, "a declaração de PAGINAS_COM_DADOS mudou"
-    # Entra em primeiro: a primeira página da lista é a que abre por padrão.
-    app = app.replace(INICIO_DA_LISTA, INICIO_DA_LISTA + '    st.Page("pages/dados_falsos.py", title="Dados"),\n')
+    # Entra em primeiro na primeira seção: é a página que abre por padrão.
+    app = app.replace(INICIO_DA_LISTA, INICIO_DA_LISTA + '        st.Page("pages/dados_falsos.py", title="Dados"),\n')
     (destino / "app.py").write_text(app, encoding="utf-8")
     return destino / "app.py"
 

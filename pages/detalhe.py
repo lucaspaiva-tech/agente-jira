@@ -21,7 +21,9 @@ from lib.dados import (
 from lib.dominio import (
     OPCOES_DECISAO,
     TEXTO_SITUACAO_REEMBOLSO,
+    acao_principal,
     acoes_disponiveis,
+    cor_sla,
     descrever_evento,
     descricao_destino_reembolso,
     descricao_multa,
@@ -32,12 +34,15 @@ from lib.dominio import (
     mensagem_de_erro,
     pode_editar_obs,
     pode_mudar_acionar_operador,
+    rotulo_estado,
     situacao_reembolso,
+    texto_sla,
     validar_decisao,
 )
 
 # Cor do domínio -> caixa nativa do Streamlit (DESIGN.md: cor semântica só carrega significado).
 CAIXA_POR_COR = {"sucesso": st.success, "erro": st.error, "aviso": st.warning, "neutro": st.info}
+COR_ETIQUETA = {"sucesso": "green", "erro": "red", "aviso": "orange", "neutro": "gray"}
 
 VALORES_DA_RESERVA = [
     ("Total pago", "valor_total_pago"),
@@ -61,10 +66,9 @@ def ir_pra_fila():
         st.switch_page("pages/fila.py")
 
 
-st.title("🔎 Detalhe")
-
 ticket_id = st.session_state.get("ticket_id")
 if ticket_id is None:
+    st.title("Detalhe")
     st.info("Escolha um ticket na Fila pra ver o detalhe.")
     ir_pra_fila()
     st.stop()
@@ -79,16 +83,18 @@ except Exception:
     st.stop()
 
 if ticket is None:
+    st.title("Detalhe")
     st.warning("Esse ticket não foi encontrado. Escolha outro na Fila.")
     ir_pra_fila()
     st.stop()
 
-# Cabeçalho
-st.subheader(f"{ticket['jira_key']} · {ticket.get('empresa') or 'empresa não identificada'}")
-st.caption(
-    f"Estado: **{ticket['estado']}** · Recebido em {formatar_data_hora(ticket.get('recebido_em'))}"
-    f" · SLA {ticket.get('sla_texto') or '—'}"
-)
+# Cabeçalho: o título é o próprio ticket; estado e SLA viram etiquetas (cor + palavra).
+st.title(f"{ticket['jira_key']} · {ticket.get('empresa') or 'empresa não identificada'}")
+etiquetas = [f":gray-badge[{rotulo_estado(ticket['estado'])}]"]
+if (sla := texto_sla(ticket.get("situacao_sla"), ticket.get("sla_texto"))) != "—":
+    etiquetas.append(f":{COR_ETIQUETA[cor_sla(ticket.get('situacao_sla'))]}-badge[SLA {sla}]")
+st.markdown(" ".join(etiquetas))
+st.caption(f"Recebido em {formatar_data_hora(ticket.get('recebido_em'))}")
 link = link_jira(ler_segredo("JIRA_BASE_URL"), ticket["jira_key"])
 if link:
     st.link_button("Abrir no Jira", link)
@@ -96,7 +102,6 @@ else:
     st.caption("Link do Jira indisponível: falta o segredo JIRA_BASE_URL.")
 if ticket.get("erro"):
     st.error(f"Falha no processamento: {ticket['erro']}")
-
 
 
 def executar(acao, *argumentos, sucesso: str):
@@ -118,6 +123,14 @@ if aviso := st.session_state.pop("aviso_acao", None):
     st.success(aviso)
 
 acoes = acoes_disponiveis(ticket)
+# Só o próximo passo do fluxo fica em rosa (DESIGN.md: o rosa é ação, não decoração).
+principal = acao_principal(acoes)
+
+
+def tipo(acao: str) -> str:
+    return "primary" if acao == principal else "secondary"
+
+
 destino_atual = descricao_destino_reembolso(ticket.get("destino_reembolso"))
 
 with st.container(border=True):
@@ -126,7 +139,7 @@ with st.container(border=True):
         st.caption("Nenhuma ação de fluxo disponível neste estado.")
 
     if "enviar_ao_parceiro" in acoes:
-        if st.button("📤 Enviar ao parceiro", type="primary"):
+        if st.button("📤 Enviar ao parceiro", type=tipo("enviar_ao_parceiro")):
             executar(enviar_ao_parceiro, sucesso="Envio pedido. O n8n vai escrever a linha na planilha do parceiro.")
 
     if "reverter_envio" in acoes:
@@ -143,7 +156,7 @@ with st.container(border=True):
             st.markdown("**Decisão manual**")
             aprovado = st.radio("Podemos reembolsar?", OPCOES_DECISAO, index=None, horizontal=True)
             motivo = st.text_input("Motivo")
-            if st.form_submit_button("Registrar decisão"):
+            if st.form_submit_button("Registrar decisão", type=tipo("registrar_decisao")):
                 if problema := validar_decisao(aprovado, motivo):
                     st.warning(problema)
                 else:
@@ -161,15 +174,15 @@ with st.container(border=True):
             executar(corrigir_autorizacao, not autorizado, sucesso="Autorização de liderança corrigida.")
 
     if "confirmar_reembolso" in acoes:
-        with st.popover("💸 Confirmar reembolso"):
+        with st.popover("💸 Confirmar reembolso", type=tipo("confirmar_reembolso")):
             st.markdown(f"O reembolso vai para: **{destino_atual}**.")
             if ticket.get("pede_autorizacao"):
                 st.caption("Depois de confirmar, a autorização de liderança não pode mais ser mudada.")
-            if st.button("Confirmar"):
+            if st.button("Confirmar", type="primary"):
                 executar(confirmar_reembolso, sucesso="Reembolso confirmado.")
 
     if "resolver" in acoes:
-        if st.button("✅ Resolver"):
+        if st.button("✅ Resolver", type=tipo("resolver")):
             executar(resolver, sucesso="Ticket resolvido.")
 
     if "reabrir" in acoes:

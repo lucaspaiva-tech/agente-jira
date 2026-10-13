@@ -36,16 +36,18 @@ except Exception:
 
 ## 2. Registrar em `PAGINAS_COM_DADOS`
 
-No `app.py`, dentro da lista `PAGINAS_COM_DADOS` (nunca direto em `paginas`):
+No `app.py`, dentro de uma seção de `PAGINAS_COM_DADOS` (nunca direto em `paginas`):
 
 ```python
-PAGINAS_COM_DADOS: list = [
-    st.Page("pages/fila.py", title="Fila", icon="📋"),
-]
+PAGINAS_COM_DADOS: dict[str, list] = {
+    "Tratamento": [
+        st.Page("pages/fila.py", title="Fila", icon=":material/view_list:"),
+    ],
+}
 ```
 
 É essa lista que a trava de identidade protege. Página registrada fora dela abriria sem login
-no link externo. A primeira da lista é a que abre por padrão.
+no link externo. A primeira página da primeira seção é a que abre por padrão.
 
 ## 3. Depois de gravar, recarregar
 

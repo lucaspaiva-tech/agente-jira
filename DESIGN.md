@@ -14,22 +14,32 @@ inventar.
 
 ## Como a paleta entra no Streamlit
 
-O Streamlit só deixa configurar quatro cores no tema (`.streamlit/config.toml`):
+Tudo pelo tema nativo do Streamlit (`.streamlit/config.toml`), no visual de painel: conteúdo em
+branco, barra lateral em cinza claro com borda, cartões com borda e cantos arredondados.
 
 | Config do tema | Valor | Token de origem |
 |---|---|---|
 | `primaryColor` | `#e6006a` | `primaria-ativa` |
-| `backgroundColor` | `#fafafa` | `tela` |
-| `secondaryBackgroundColor` | `#ffffff` | `cartao` |
+| `backgroundColor` | `#ffffff` | `cartao` (fundo do conteúdo) |
+| `secondaryBackgroundColor` | `#fafafa` | `tela` (campos e cabeçalho de tabela) |
+| `sidebar.backgroundColor` | `#fafafa` | `tela` |
 | `textColor` | `#454545` | `tinta` (não é preto) |
+| `borderColor` | `#e0e0e0` | `fio` |
+| `greenColor` / `redColor` / `orangeColor` | `#40b552` / `#dc2e36` / `#e4ad1c` | `sucesso` / `erro` / `aviso` |
+| `baseRadius` / `buttonRadius` | `0.75rem` / `0.5rem` | cantos dos cartões e botões |
+| `font` | Inter (Google Fonts), com `sans-serif` de reserva | |
 
 `primaryColor` usa o `primaria-ativa` e não o `primaria` (#f11075) de propósito: botão tem texto
 branco por cima, e o #f11075 mede 4.14:1 de contraste (não passa AA), enquanto o #e6006a mede
 4.59:1 (passa).
 
 Sucesso, erro e aviso saem das cores nativas do Streamlit (`st.success`, `st.error`,
-`st.warning`). Elas não são a paleta da Buser, mas têm o significado certo. Não force cor por
-HTML só pra casar o tom.
+`st.warning`, etiquetas `:red-badge[...]`), já ajustadas pra paleta pelo tema.
+
+**HTML próprio só em dois lugares:** o cartão em degradê rosa da Visão geral ("Precisa de você")
+e nada que mexa no estilo interno do Streamlit. CSS global sobrescrevendo o Streamlit quebra a
+cada atualização: não use. Precisou de um visual que o tema não cobre? Bloco isolado com
+`st.html` e estilo só dentro dele.
 
 ## Paleta de referência
 

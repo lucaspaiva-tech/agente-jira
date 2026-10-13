@@ -6,6 +6,7 @@ O que o n8n e a página compartilham mora no banco, num lugar só: decisão auto
 """
 
 import re
+from collections import Counter
 from datetime import UTC, date, datetime
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -65,6 +66,77 @@ def situacao_reembolso(aprovado, reembolso_confirmado_em) -> str:
 # Ordem do fluxo, só pra exibir. Quem valida o estado é o banco (transicoes_estado).
 ESTADOS = ("processando", "falha", "pendente", "enviando", "enviado_parceiro", "decidido", "resolvido")
 ESTADOS_PADRAO_FILA = tuple(e for e in ESTADOS if e != "resolvido")
+
+ROTULO_ESTADO = {
+    "processando": "Processando",
+    "falha": "Falha",
+    "pendente": "Pendente",
+    "enviando": "Enviando",
+    "enviado_parceiro": "Com o parceiro",
+    "decidido": "Decidido",
+    "resolvido": "Resolvido",
+}
+
+
+def rotulo_estado(estado) -> str:
+    """Nome do estado pra pessoa ler. O código do banco (enviado_parceiro) não vai pra tela."""
+    return ROTULO_ESTADO.get(estado, estado)
+
+
+def rotulo_estado_fila(ticket) -> str:
+    """Estado na tabela da fila; ticket com erro ganha o sinal ⚠️ (o texto fica no detalhe)."""
+    rotulo = rotulo_estado(ticket.get("estado"))
+    return f"⚠️ {rotulo}" if ticket.get("erro") else rotulo
+
+
+# -----------------------------------------------------------------------------
+# Visão geral: o que precisa de ação humana agora
+# -----------------------------------------------------------------------------
+# Ordem de urgência: SLA estourado (parceiro atrasado) e falha antes; depois o fluxo normal.
+URGENCIA = {"estourado": 0, "falha": 1, "pendente": 2, "decidido": 3}
+
+
+def _grupo_urgencia(ticket) -> str | None:
+    if ticket.get("situacao_sla") == "estourado":
+        return "estourado"
+    return ticket.get("estado") if ticket.get("estado") in URGENCIA else None
+
+
+def precisa_de_voce(ticket) -> bool:
+    """Pendente, decidido (falta reembolso ou arquivar), falha ou parceiro com SLA estourado.
+    Com o parceiro no prazo, enviando, processando e resolvido esperam outra pessoa ou sistema."""
+    return _grupo_urgencia(ticket) is not None
+
+
+def fila_de_urgencia(tickets) -> list[dict]:
+    """Só o que precisa de você, do mais urgente pro menos; no mesmo grupo, o mais antigo primeiro."""
+    return sorted(
+        (t for t in tickets if precisa_de_voce(t)),
+        key=lambda t: (URGENCIA[_grupo_urgencia(t)], t.get("recebido_em") or ""),
+    )
+
+
+def resumo_da_fila(tickets) -> dict[str, int]:
+    estados = [t.get("estado") for t in tickets]
+    return {
+        "precisa_de_voce": sum(precisa_de_voce(t) for t in tickets),
+        "pendentes": estados.count("pendente"),
+        "sla_estourado": sum(t.get("situacao_sla") == "estourado" for t in tickets),
+        "a_fechar": estados.count("decidido"),
+        "falhas": estados.count("falha"),
+        "com_parceiro": estados.count("enviando") + estados.count("enviado_parceiro"),
+    }
+
+
+def texto_sla(situacao_sla, sla_texto) -> str:
+    """SLA em palavras, não só na cor (quem não distingue cores também precisa ler)."""
+    if situacao_sla == "estourado":
+        return f"🔴 Estourado · {sla_texto}"
+    if situacao_sla == "no_prazo":
+        return f"🟢 No prazo · {sla_texto}"
+    if situacao_sla == "respondido":
+        return f"Respondido em {sla_texto}"
+    return "—"
 
 
 def filtrar_fila(tickets, estados=None, empresas=None, status_ia=None, busca="") -> list[dict]:
@@ -155,6 +227,15 @@ ACOES = {
     "resolver": pode_resolver,
     "reabrir": pode_reabrir,
 }
+
+
+# Próximo passo do fluxo, na ordem de preferência. Reverter, corrigir e reabrir são correções.
+PRIORIDADE_ACAO_PRINCIPAL = ("enviar_ao_parceiro", "confirmar_reembolso", "registrar_decisao", "resolver")
+
+
+def acao_principal(acoes) -> str | None:
+    """A ação que a tela destaca em rosa (DESIGN.md: o rosa é ação). None se nenhuma é o próximo passo."""
+    return next((a for a in PRIORIDADE_ACAO_PRINCIPAL if a in acoes), None)
 
 
 def acoes_disponiveis(ticket) -> list[str]:
@@ -310,6 +391,8 @@ def _valor_do_evento(campo, valor) -> str:
     # O trigger grava tudo como texto: booleano chega como 'true'/'false'.
     if valor is None or valor == "":
         return "—"
+    if campo in ("estado", "criado"):
+        return rotulo_estado(valor)
     if valor in ("true", "false"):
         return "sim" if valor == "true" else "não"
     if campo == "reembolso_confirmado_em":
@@ -410,6 +493,13 @@ def mudancas_de_contato(antes, depois) -> dict[int, dict]:
         if campos:
             mudancas[linha["id"]] = campos
     return mudancas
+
+
+def empresas_sem_parceiro_com_tickets(empresas_dos_tickets, nomes_cadastrados) -> list[tuple[str, int]]:
+    """[(empresa, quantos tickets ela trava)], da que trava mais pra menos."""
+    sem_parceiro = set(empresas_sem_parceiro(empresas_dos_tickets, nomes_cadastrados))
+    contagem = Counter(e.strip() for e in empresas_dos_tickets if e and e.strip() in sem_parceiro)
+    return sorted(contagem.items(), key=lambda item: (-item[1], item[0]))
 
 
 def empresas_sem_parceiro(empresas_dos_tickets, nomes_cadastrados) -> list[str]:

@@ -6,7 +6,7 @@ from lib.config import ambiente, ler_segredo
 from lib.dados import contar
 from lib.identidade import CABECALHO_EMAIL, usuario_atual
 
-st.title("🔌 Diagnóstico")
+st.title("Diagnóstico")
 st.caption("Os três itens precisam ficar verdes antes de usar o app.")
 
 modo = ambiente()
